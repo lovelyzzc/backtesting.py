@@ -25,3 +25,4 @@ build/*
 /venv/*
 /trading/stock_data_akshare_hfq/
 /trading/stock_data_cleaned/
+/trading/stock_data/

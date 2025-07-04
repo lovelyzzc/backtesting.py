@@ -37,7 +37,7 @@ def get_stock_list():
 
 
 def update_single_stock_data(stock_code: str):
-    """下载或更新单个股票的后复权日线数据"""
+    """下载或更新单个股票的后复权日线数据。返回一个包含状态和信息的字典。"""
     filepath = os.path.join(DATA_DIR, f"{stock_code}.csv")
     
     # 设定一个较早的日期作为首次下载的起始日，确保能获取到10年数据
@@ -57,14 +57,14 @@ def update_single_stock_data(stock_code: str):
 
     today = datetime.now().strftime('%Y%m%d')
     if start_date > today:
-        return f"{stock_code}: Already up to date."
+        return {'status': 'skipped', 'code': stock_code, 'message': 'Already up to date.'}
 
     try:
         # 使用 ak.stock_zh_a_hist 获取后复权（hfq）数据
         df_new = ak.stock_zh_a_hist(symbol=stock_code, period="daily", start_date=start_date, end_date=today, adjust="hfq")
         
         if df_new is None or df_new.empty:
-            return f"{stock_code}: No new data found."
+            return {'status': 'no_data', 'code': stock_code, 'message': 'No new data found from provider.'}
 
         # 数据清洗和重命名
         df_new.rename(columns={'日期': 'Date', '开盘': 'Open', '最高': 'High',
@@ -86,10 +86,10 @@ def update_single_stock_data(stock_code: str):
             # 首次下载模式
             df_new.to_csv(filepath, index=False)
         
-        return f"{stock_code}: Updated from {start_date} to {today}."
+        return {'status': 'success', 'code': stock_code, 'message': f"Updated from {start_date} to {today}."}
 
     except Exception as e:
-        return f"{stock_code}: Error fetching data - {e}"
+        return {'status': 'error', 'code': stock_code, 'message': str(e)}
 
 
 def main_parallel():
@@ -103,6 +103,12 @@ def main_parallel():
     num_processes = max(1, cpu_count() - 1)
     print(f"Using {num_processes} processes for data synchronization...")
 
+    success_count = 0
+    no_data_count = 0
+    error_count = 0
+    skipped_count = 0
+    failed_stocks = []
+
     # 创建进程池
     with Pool(processes=num_processes) as pool:
         # 使用 imap_unordered 来获得更好的进度条体验
@@ -110,11 +116,40 @@ def main_parallel():
         
         # 使用 tqdm 显示进度
         for result in tqdm(results_iterator, total=len(stock_list), desc="Syncing Data"):
-            # 您可以在这里选择性地打印结果，但为了保持进度条清洁，可以注释掉
-            # print(result)
-            pass
+            status = result.get('status', 'error')
+            if status == 'success':
+                success_count += 1
+            elif status == 'no_data':
+                no_data_count += 1
+                failed_stocks.append(result)
+            elif status == 'error':
+                error_count += 1
+                failed_stocks.append(result)
+            elif status == 'skipped':
+                skipped_count += 1
             
     print("\nData synchronization finished!")
+    print("-" * 30)
+    print(f"Total stocks in list:      {len(stock_list)}")
+    print(f"Successfully downloaded:   {success_count}")
+    print(f"Skipped (already up-to-date): {skipped_count}")
+    print(f"No data from provider:     {no_data_count}")
+    print(f"Errors during fetching:      {error_count}")
+    print("-" * 30)
+
+    if failed_stocks:
+        log_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'failed_stocks.log')
+        try:
+            with open(log_file, 'w', encoding='utf-8') as f:
+                f.write("Stock Code,Status,Message\n")
+                for stock in failed_stocks:
+                    # 将可能包含逗号的消息内容用引号包裹起来
+                    message = str(stock['message']).replace('"', '""')
+                    f.write(f"{stock['code']},{stock['status']},\"{message}\"\n")
+            print(f"Details for stocks that couldn't be fetched are saved in: {log_file}")
+        except IOError as e:
+            print(f"Error writing to log file {log_file}: {e}")
+            
     print(f"All data saved in: {DATA_DIR}")
 
 
