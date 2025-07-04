@@ -7,10 +7,10 @@ from time import sleep
 from tqdm import tqdm
 
 # --- 配置 ---
-# 本地数据存储路径，存储在当前脚本所在目录的上一级下的 'stock_data_akshare' 文件夹
-# e.g. /trading/stock_data_akshare/
+# 本地数据存储路径，存储在当前脚本所在目录的上一级下的 'stock_data' 文件夹
+# e.g. /trading/stock_data/stock_data_akshare_hfq/
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(os.path.dirname(CURRENT_DIR), 'stock_data_akshare_hfq')
+DATA_DIR = os.path.join(os.path.dirname(CURRENT_DIR), 'stock_data', 'stock_data_akshare_hfq')
 
 # 创建存储目录
 os.makedirs(DATA_DIR, exist_ok=True)
