@@ -1,0 +1,60 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © AlgoAlpha
+//@version=5
+indicator("Momentum Trail Oscillator [Visuals]", shorttitle="AlgoAlpha - Momentum Visuals", overlay=false)
+
+//━━━━━━━━━━━━━━━━ 2.  INPUTS ━━━━━━━━━━━━━━━━
+oscLen     = input.int(21, "Oscillator Length", tooltip="Length for HMA smoothing of price", group="Calculation Settings")
+trailMult  = input.float(12, "Trail Multiplier", tooltip="Distance multiplier between mid-line and trail bands", group="Calculation Settings")
+smthLen    = oscLen
+trailLen   = 5
+
+//━━━━━━━━━━━━━━━━ 3.  APPEARANCE INPUTS (Darker Colors) ━━━━━━━━━━━━━━━━
+COL_UP = input.color(#2962FF, "Bullish Color (Up)", group="Appearance")
+COL_DN = input.color(#FFC400, "Bearish Color (Down)", group="Appearance")
+COL_HU = input.color(#448AFF, "Oversold Zone Color", group="Appearance")
+COL_HD = input.color(#FFAB00, "Overbought Zone Color", group="Appearance")
+
+//━━━━━━━━━━━━━━━━ 4.  FUNCTIONS ━━━━━━━━━━━━━━━━
+double_smooth(src, len, smthlen) =>
+    first = ta.ema(src, len)
+    ta.ema(first, smthlen)
+
+trail(src, len, mult) =>
+    basis = ta.wma(src, int(len / 2))
+    vola  = ta.hma(math.abs(src - src[1]), len)
+    var float upper = na
+    var float lower = na
+    var int   dir   = 1
+    dist  = vola
+    uBand = basis + dist * mult
+    lBand = basis - dist * mult
+    upper := ta.wma((uBand < nz(upper[1]) or src[1] > nz(upper[1])) ? uBand : nz(upper[1]), len * 3)
+    lower := ta.wma((lBand > nz(lower[1]) or src[1] < nz(lower[1])) ? lBand : nz(lower[1]), len * 3)
+    dir := na(dir[1]) ? 1 :
+           dir[1] == -1 and src > upper ?  1 :
+           dir[1] ==  1 and src < lower ? -1 :
+           dir[1]
+    [dir, upper, lower]
+
+//━━━━━━━━━━━━━━━━ 5.  CALCULATIONS ━━━━━━━━━━━━━━━━
+price                = ta.hma(close, int(oscLen / 3))
+pc                   = ta.change(price)
+doublePc             = double_smooth(pc, oscLen, smthLen)
+doubleAbsPc          = double_smooth(math.abs(pc), oscLen, smthLen)
+mom                  = 100 * (doublePc / doubleAbsPc)
+[direction, up, dn]  = trail(mom, trailLen, trailMult)
+
+//━━━━━━━━━━━━━━━━ 6.  VISUALS (Darker & Bolder) ━━━━━━━━━━━━━━━━
+momcol = color.from_gradient(mom, -50, 50, COL_HU, COL_HD)
+plot(mom, title="Momentum", color=momcol, linewidth=2) // Made line thicker
+plot(direction == 1 ? dn : na, title="Trailing-Up", color=color.new(COL_UP, 0), style=plot.style_linebr, linewidth=2) // Darker, thicker
+plot(direction == -1 ? up : na, title="Trailing-Down", color=color.new(COL_DN, 0), style=plot.style_linebr, linewidth=2) // Darker, thicker
+m   = hline(0, "Mid-Line", color.gray, hline.style_solid)
+max = hline(50, "OB Level", color.new(color.maroon, 50))
+hh  = hline(40, "OB Zone", color.new(color.maroon, 80), hline.style_dotted)
+min = hline(-50, "OS Level", color.new(color.green, 50))
+ll  = hline(-40, "OS Zone", color.new(color.green, 80), hline.style_dotted)
+
+fill(max, hh, color.new(COL_HD, 75), title="Overbought Zone") // Darker fill
+fill(min, ll, color.new(COL_HU, 75), title="Oversold Zone")   // Darker fill

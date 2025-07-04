@@ -1,0 +1,80 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © AlgoAlpha
+//@version=5
+// 1. STRATEGY DECLARATION
+strategy("Momentum Trail Strategy [AlgoAlpha]", 
+         shorttitle="AlgoAlpha - Momentum Strategy", 
+         overlay=true, 
+         commission_type=strategy.commission.percent,
+         commission_value=0.075,
+         initial_capital=10000, 
+         default_qty_value=10, 
+         default_qty_type=strategy.percent_of_equity)
+
+//━━━━━━━━━━━━━━━━ 2.  INPUTS ━━━━━━━━━━━━━━━━
+oscLen     = input.int(21, "Oscillator Length", tooltip="Length for HMA smoothing of price", group="Calculation Settings")
+trailMult  = input.float(12, "Trail Multiplier", tooltip="Distance multiplier between mid-line and trail bands", group="Calculation Settings")
+smthLen    = oscLen
+trailLen   = 5
+
+//━━━━━━━━━━━━━━━━ 3.  APPEARANCE INPUTS (Darker Colors) ━━━━━━━━━━━━━━━━
+COL_UP = input.color(#2962FF, "Bullish Color (Up)", group="Appearance")
+COL_DN = input.color(#FFC400, "Bearish Color (Down)", group="Appearance")
+// Note: Oversold/Overbought zone colors are not used in the overlayed strategy visuals.
+
+//━━━━━━━━━━━━━━━━ 4.  FUNCTIONS ━━━━━━━━━━━━━━━━
+double_smooth(src, len, smthlen) =>
+    first = ta.ema(src, len)
+    ta.ema(first, smthlen)
+
+trail(src, len, mult) =>
+    basis = ta.wma(src, int(len / 2))
+    vola  = ta.hma(math.abs(src - src[1]), len)
+    var float upper = na
+    var float lower = na
+    var int   dir   = 1
+    dist  = vola
+    uBand = basis + dist * mult
+    lBand = basis - dist * mult
+    upper := ta.wma((uBand < nz(upper[1]) or src[1] > nz(upper[1])) ? uBand : nz(upper[1]), len * 3)
+    lower := ta.wma((lBand > nz(lower[1]) or src[1] < nz(lower[1])) ? lBand : nz(lower[1]), len * 3)
+    dir := na(dir[1]) ? 1 :
+           dir[1] == -1 and src > upper ?  1 :
+           dir[1] ==  1 and src < lower ? -1 :
+           dir[1]
+    [dir, upper, lower]
+
+//━━━━━━━━━━━━━━━━ 5.  CALCULATIONS ━━━━━━━━━━━━━━━━
+price                = ta.hma(close, int(oscLen / 3))
+pc                   = ta.change(price)
+doublePc             = double_smooth(pc, oscLen, smthLen)
+doubleAbsPc          = double_smooth(math.abs(pc), oscLen, smthLen)
+mom                  = 100 * (doublePc / doubleAbsPc)
+[direction, up, dn]  = trail(mom, trailLen, trailMult)
+
+//━━━━━━━━━━━━━━━━ 6.  STRATEGY LOGIC ━━━━━━━━━━━━━━━━
+// This is a stop-and-reverse strategy. It's always in the market, either long or short.
+// The direction is determined by the core momentum trend (`direction` variable).
+
+// A long signal is generated when the momentum direction flips from bearish (-1) to bullish (1).
+longCondition = direction == 1 and direction[1] == -1
+
+// A short signal is generated when the momentum direction flips from bullish (1) to bearish (-1).
+shortCondition = direction == -1 and direction[1] == 1
+
+// Submit entry orders
+if (longCondition)
+    // When a long signal appears, close any open short position and enter a new long position.
+    strategy.close("Short", comment="Close Short")
+    strategy.entry("Long", strategy.long, comment="Enter Long")
+
+if (shortCondition)
+    // When a short signal appears, close any open long position and enter a new short position.
+    strategy.close("Long", comment="Close Long")
+    strategy.entry("Short", strategy.short, comment="Enter Short")
+
+
+//━━━━━━━━━━━━━━━━ 7.  VISUALS ON CHART ━━━━━━━━━━━━━━━━
+// Plot buy/sell labels on the chart for clear visual backtesting.
+plotshape(series=longCondition, title='Buy Signal', style=shape.labelup, location=location.belowbar, color=color.new(COL_UP, 0), text='BUY', textcolor=color.new(color.white, 0), size=size.small)
+plotshape(series=shortCondition, title='Sell Signal', style=shape.labeldown, location=location.abovebar, color=color.new(COL_DN, 0), text='SELL', textcolor=color.new(color.white, 0), size=size.small) 
