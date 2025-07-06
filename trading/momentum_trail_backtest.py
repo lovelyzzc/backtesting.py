@@ -21,12 +21,17 @@ from backtesting import Backtest, Strategy
 from backtesting.lib import crossover
 import pandas_ta as ta
 from tqdm import tqdm
+import itertools
+import concurrent.futures
+from functools import partial
 
 # ━━━━━━━━━━━━━━━━ 1. HELPER FUNCTIONS (from Pine Script) ━━━━━━━━━━━━━━━━
 
 def double_smooth(src, length, smth_len):
     """Applies a double EMA smoothing to the source series."""
     first = ta.ema(src, length=length)
+    if first is None:
+        return None
     return ta.ema(first, length=smth_len)
 
 def trail_indicator(src, length, mult):
@@ -78,8 +83,18 @@ def trail_indicator(src, length, mult):
         # expanding series. This changes complexity from O(N^2) to O(N).
         if i >= wma_length - 1:
             start_idx = i + 1 - wma_length
-            upper.iloc[i] = ta.wma(intermediate_upper_src.iloc[start_idx:i+1], length=wma_length).iloc[-1]
-            lower.iloc[i] = ta.wma(intermediate_lower_src.iloc[start_idx:i+1], length=wma_length).iloc[-1]
+            wma_upper = ta.wma(intermediate_upper_src.iloc[start_idx:i+1], length=wma_length)
+            wma_lower = ta.wma(intermediate_lower_src.iloc[start_idx:i+1], length=wma_length)
+
+            if wma_upper is not None and not wma_upper.empty:
+                upper.iloc[i] = wma_upper.iloc[-1]
+            else: # Not enough data for WMA, use the intermediate value
+                upper.iloc[i] = intermediate_upper_src.iloc[i]
+
+            if wma_lower is not None and not wma_lower.empty:
+                lower.iloc[i] = wma_lower.iloc[-1]
+            else: # Not enough data for WMA, use the intermediate value
+                lower.iloc[i] = intermediate_lower_src.iloc[i]
         else: # Not enough data for WMA, use the intermediate value
              upper.iloc[i] = intermediate_upper_src.iloc[i]
              lower.iloc[i] = intermediate_lower_src.iloc[i]
@@ -115,10 +130,18 @@ def momentum_indicator(close, osc_len, smth_len, trail_len, trail_mult):
     double_pc = double_smooth(pc, osc_len, smth_len)
     double_abs_pc = double_smooth(abs(pc), osc_len, smth_len)
     
-    # Avoid division by zero
-    mom = 100 * (double_pc / double_abs_pc.where(double_abs_pc != 0, 1))
-    mom.fillna(0, inplace=True) # Fill any potential NaNs in mom
+    if double_pc is None or double_abs_pc is None:
+        return np.full_like(close, np.nan)
     
+    # Avoid division by zero
+    divisor = double_abs_pc.where(double_abs_pc != 0, 1)
+    mom = 100 * (double_pc / divisor)
+
+    if isinstance(mom, pd.Series):
+        mom.fillna(0, inplace=True) # Fill any potential NaNs in mom
+    elif pd.isna(mom):
+        mom = 0
+
     direction, _, _ = trail_indicator(mom, trail_len, trail_mult)
     return direction
 
@@ -164,8 +187,8 @@ class MomentumTrailStrategy(Strategy):
 
 # ━━━━━━━━━━━━━━━━ 3. BACKTEST EXECUTION ━━━━━━━━━━━━━━━━
 
-def run_backtest_for_file(filepath):
-    """Loads a single CSV and runs the backtest."""
+def run_backtest_for_file(filepath, **strategy_params):
+    """Loads a single CSV and runs the backtest with given parameters."""
     try:
         data = pd.read_csv(filepath, index_col='Date', parse_dates=True)
     except Exception as e:
@@ -201,14 +224,25 @@ def run_backtest_for_file(filepath):
                   commission=.00075, # 0.075%
                   exclusive_orders=True) # Stop-and-reverse behavior
 
-    stats = bt.run()
+    stats = bt.run(**strategy_params)
     return stats
 
+def process_file_wrapper(filename, data_dir, params):
+    """
+    Wrapper function to run backtest for a single file.
+    This makes it easier to use with ProcessPoolExecutor.
+    """
+    filepath = os.path.join(data_dir, filename)
+    stats = run_backtest_for_file(filepath, **params)
+    if stats is not None:
+        stats['Stock'] = filename.replace('.csv', '')
+        return stats
+    return None
 
 if __name__ == "__main__":
     # Construct the path to the data directory relative to the script's location
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    data_dir = os.path.join(script_dir, 'stock_data_cleaned')
+    data_dir = os.path.join(script_dir, 'stock_data', 'stock_data_cleaned')
 
     if not os.path.isdir(data_dir):
         print(f"错误: 数据目录 '{data_dir}' 未找到.")
@@ -221,42 +255,80 @@ if __name__ == "__main__":
         print(f"在 '{data_dir}' 中未找到CSV文件.")
         exit()
 
-    print(f"--- 开始对 {len(all_files)} 支股票进行回测 ---")
+    # --- 1. 定义参数优化的网格 ---
+    # 在这里定义你想要测试的参数范围
+    param_grid = {
+        'osc_len': [15, 21, 30],
+        'smth_len': [15, 21, 30],
+        'trail_len': [3, 5, 7],
+        'trail_mult': [10.0, 12.0, 15.0]
+    }
 
-    all_stats = []
+    # 生成所有参数组合
+    keys, values = zip(*param_grid.items())
+    param_combinations = [dict(zip(keys, v)) for v in itertools.product(*values)]
 
-    # Use tqdm for a progress bar
-    for filename in tqdm(all_files, desc="回测进度"):
-        filepath = os.path.join(data_dir, filename)
-        stats = run_backtest_for_file(filepath)
+    print(f"--- 开始对 {len(all_files)} 支股票使用 {len(param_combinations)} 组参数进行优化回测 ---")
 
-        if stats is not None:
-            # Add a stock identifier to the results Series
-            stats['Stock'] = filename.replace('.csv', '')
-            all_stats.append(stats)
+    optimization_results = []
 
-    if not all_stats:
-        print("\n--- 所有回测均未产生有效结果 ---")
+    # --- 2. 遍历每一种参数组合 ---
+    for params in tqdm(param_combinations, desc="参数优化进度"):
+        all_stats_for_params = []
+        
+        # --- 使用多进程并行处理文件回测 ---
+        with concurrent.futures.ProcessPoolExecutor() as executor:
+            # 使用 functools.partial 预先填充 data_dir 和 params 参数
+            task = partial(process_file_wrapper, data_dir=data_dir, params=params)
+            
+            # 将任务提交到进程池，并使用 tqdm 显示进度
+            futures = [executor.submit(task, filename) for filename in all_files]
+            
+            progress_desc = f"回测(osc_len={params['osc_len']}, smth_len={params['smth_len']})"
+            for future in tqdm(concurrent.futures.as_completed(futures), total=len(all_files), desc=progress_desc, leave=False):
+                try:
+                    result = future.result()
+                    if result is not None:
+                        all_stats_for_params.append(result)
+                except Exception as exc:
+                    print(f"一个回测任务产生错误: {exc}")
+
+        # --- 3. 汇总当前参数组合的表现 ---
+        if all_stats_for_params:
+            results_df = pd.DataFrame(all_stats_for_params)
+            
+            # 计算这组参数在所有回测股票上的平均表现
+            # 我们关心一些关键指标的均值，例如夏普比率、回报率等
+            summary = {
+                'params': params,
+                'Avg. Sharpe Ratio': results_df['Sharpe Ratio'].mean(),
+                'Avg. Return [%]': results_df['Return [%]'].mean(),
+                'Avg. Win Rate [%]': results_df['Win Rate [%]'].mean(),
+                'Total Trades': results_df['# Trades'].sum(),
+                'Num Stocks Tested': len(results_df)
+            }
+            optimization_results.append(summary)
+
+    # --- 4. 分析优化结果 ---
+    if not optimization_results:
+        print("\n--- 优化过程未产生任何有效结果 ---")
     else:
-        # Combine all stats into a single DataFrame
-        results_df = pd.DataFrame(all_stats)
-        results_df.set_index('Stock', inplace=True)
-
-        # Drop columns that are not suitable for aggregation (like complex objects)
-        results_df.drop(columns=['_strategy', '_trades', '_equity_curve'], inplace=True, errors='ignore')
-
-        print("\n\n--- 汇总回测结果 ---")
+        # 将优化汇总结果转换为DataFrame
+        optimization_summary_df = pd.DataFrame(optimization_results)
+        
+        print("\n\n--- 参数优化结果汇总 ---")
         with pd.option_context('display.max_rows', None, 'display.width', 1000):
-            print(results_df)
+            print(optimization_summary_df.sort_values('Avg. Sharpe Ratio', ascending=False))
 
-        print("\n\n--- 汇总统计信息 ---")
-        # The describe() method provides a good summary for numeric columns
-        with pd.option_context('display.width', 1000):
-            print(results_df.describe())
+        # 找到夏普比率最高的最佳参数
+        best_params_row = optimization_summary_df.loc[optimization_summary_df['Avg. Sharpe Ratio'].idxmax()]
+
+        print("\n\n--- 最佳参数组合 (基于最高平均夏普比率) ---")
+        print(best_params_row)
 
         # Optionally, save the results to a CSV file
         try:
-            results_df.to_csv('momentum_trail_backtest_results.csv')
-            print("\n结果已保存至 'momentum_trail_backtest_results.csv'")
+            optimization_summary_df.to_csv('momentum_trail_optimization_results.csv', index=False)
+            print("\n优化结果已保存至 'momentum_trail_optimization_results.csv'")
         except Exception as e:
-            print(f"\n保存结果失败: {e}")
+            print(f"\n保存优化结果失败: {e}")

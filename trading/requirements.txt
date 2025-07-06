@@ -3,6 +3,5 @@ tqdm
 pandas
 backtesting
 pandas_ta
-pkg_resources
 setuptools 
 numpy<2.0.0

@@ -8,10 +8,10 @@ from tqdm import tqdm
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 # 源数据目录 (由 sync_akshare_data.py 下载)
-SOURCE_DATA_DIR = os.path.join(os.path.dirname(CURRENT_DIR), 'stock_data_akshare_hfq')
+SOURCE_DATA_DIR = os.path.join(os.path.dirname(CURRENT_DIR), 'stock_data', 'stock_data_akshare_hfq')
 
 # 清洗后数据的存储目录
-CLEANED_DATA_DIR = os.path.join(os.path.dirname(CURRENT_DIR), 'stock_data_cleaned')
+CLEANED_DATA_DIR = os.path.join(os.path.dirname(CURRENT_DIR), 'stock_data', 'stock_data_cleaned')
 
 # 创建存储目录
 os.makedirs(CLEANED_DATA_DIR, exist_ok=True)
