@@ -22,6 +22,7 @@ from tqdm import tqdm
 import itertools
 import concurrent.futures
 from functools import partial
+from datetime import datetime
 
 # --- Setup Python Path to allow imports from parent directory ---
 # This makes the script runnable from anywhere.
@@ -180,9 +181,16 @@ if __name__ == "__main__":
 
         # Optionally, save the results to a CSV file
         try:
-            # Generate a filename based on the strategy
-            results_filename = f"{STRATEGY_TO_TEST.__name__}_optimization_results.csv"
-            optimization_summary_df.to_csv(results_filename, index=False)
-            print(f"\n优化结果已保存至 '{results_filename}'")
+            # 创建 results 目录 (如果不存在)
+            results_dir = os.path.join(script_dir, 'results')
+            os.makedirs(results_dir, exist_ok=True)
+
+            # 生成带时间戳的文件名
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            results_filename = f"{STRATEGY_TO_TEST.__name__}_optimization_results_{timestamp}.csv"
+            full_path = os.path.join(results_dir, results_filename)
+            
+            optimization_summary_df.to_csv(full_path, index=False)
+            print(f"\n优化结果已保存至 '{full_path}'")
         except Exception as e:
             print(f"\n保存优化结果失败: {e}")
