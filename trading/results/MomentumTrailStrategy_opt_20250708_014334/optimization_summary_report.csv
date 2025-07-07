@@ -1,0 +1,2 @@
+params,Avg. Sharpe Ratio,Avg. Return [%],Avg. Win Rate [%],Total Trades,Num Stocks Tested
+"{'osc_len': 15, 'smth_len': 15, 'trail_len': 3, 'trail_mult': 10.0}",0.023954654588388292,16.770673950063152,36.84167145945944,194535,5400

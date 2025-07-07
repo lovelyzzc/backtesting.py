@@ -1,0 +1,8 @@
+--- 最佳参数组合 (基于最高平均夏普比率) ---
+
+params               {'osc_len': 15, 'smth_len': 15, 'trail_len': 3...
+Avg. Sharpe Ratio                                             0.023955
+Avg. Return [%]                                              16.770674
+Avg. Win Rate [%]                                            36.841671
+Total Trades                                                    194535
+Num Stocks Tested                                                 5400
