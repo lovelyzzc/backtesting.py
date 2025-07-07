@@ -30,7 +30,7 @@ class MomentumTrailStrategy(Strategy):
     def next(self):
         """
         Define the trading logic for each bar.
-        This is a stop-and-reverse strategy.
+        This is a long-only strategy.
         """
         # A long signal is generated when the direction flips from -1 to 1.
         if self.direction[-2] == -1 and self.direction[-1] == 1:
@@ -38,8 +38,7 @@ class MomentumTrailStrategy(Strategy):
                 self.position.close()
             self.buy()
 
-        # A short signal is generated when the direction flips from 1 to -1.
+        # A short signal (sell signal) only closes the long position, but does not open a short one.
         elif self.direction[-2] == 1 and self.direction[-1] == -1:
             if self.position.is_long:
-                self.position.close()
-            self.sell() 
+                self.position.close() 
