@@ -40,10 +40,10 @@ if __name__ == "__main__":
 
     # 2. 定义参数优化的网格
     param_grid = {
-        'osc_len': [15],
-        'smth_len': [15],
-        'trail_len': [3],
-        'trail_mult': [10.0]
+        'osc_len': [15, 21, 30],
+        'smth_len': [15, 21, 30],
+        'trail_len': [3, 5, 7],
+        'trail_mult': [10.0, 12.0, 15.0]
     }
 
     # 3. 定义数据和结果目录
