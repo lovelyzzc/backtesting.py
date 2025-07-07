@@ -28,3 +28,4 @@ build/*
 /trading/stock_data/
 /venv/lib/
 /venv/lib64/
+trading/tushare_data/
