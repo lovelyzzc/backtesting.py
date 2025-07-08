@@ -1,0 +1,34 @@
+--- 最佳参数组合 (基于最高平均夏普比率) ---
+
+params                    {'atr_len': 10, 'fact': 3.0, 'training_data_pe...
+Num Stocks Tested                                                      5402
+Total Trades                                                          46008
+Sharpe Ratio                                                      -0.166296
+Return [%]                                                        -0.245515
+Max. Drawdown [%]                                                -14.105498
+Duration                                        891 days 13:39:09.796371712
+Exposure Time [%]                                                   5.85689
+Equity Final [$]                                               99754.485063
+Equity Peak [$]                                               111309.589398
+Commissions [$]                                                 1275.794673
+Buy & Hold Return [%]                                             29.998943
+Return (Ann.) [%]                                                 -0.405711
+Volatility (Ann.) [%]                                              9.841184
+CAGR [%]                                                          -0.324633
+Sortino Ratio                                                           inf
+Calmar Ratio                                                       0.153471
+Alpha [%]                                                         -1.370495
+Beta                                                                0.04448
+Avg. Drawdown [%]                                                   -9.0716
+Max. Drawdown Duration                          563 days 21:09:16.206002224
+Avg. Drawdown Duration                          364 days 21:36:28.810670620
+Win Rate [%]                                                      40.625689
+Best Trade [%]                                                     9.113459
+Worst Trade [%]                                                   -5.651495
+Avg. Trade [%]                                                    -0.192713
+Max. Trade Duration                               7 days 03:45:06.501203926
+Avg. Trade Duration                               4 days 21:01:34.017410631
+Profit Factor                                                      2.553414
+Expectancy [%]                                                     -0.06214
+SQN                                                               -0.404128
+Kelly Criterion                                                   -0.558063

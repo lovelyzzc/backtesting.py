@@ -1,0 +1,23 @@
+--- 最佳参数组合 (基于最高平均夏普比率) ---
+
+params                     {'osc_len': 15, 'smth_len': 15, 'trail_len': 3...
+Num Stocks Tested                                                       5400
+Total Trades                                                          193272
+Sharpe Ratio (50%)                                                   0.03538
+Return [%] (50%)                                                    2.506524
+Max. Drawdown [%] (50%)                                           -29.014722
+Sharpe Ratio (25%)                                                  -0.29476
+Sharpe Ratio (75%)                                                   0.32074
+Return [%] (25%)                                                  -17.517331
+Return [%] (75%)                                                   27.420823
+Max. Drawdown [%] (25%)                                           -37.246116
+Max. Drawdown [%] (75%)                                           -22.146022
+Win Rate [%] (25%)                                                 37.209302
+Win Rate [%] (50%)                                                 42.857143
+Win Rate [%] (75%)                                                 48.717949
+Profit Factor (25%)                                                 0.860027
+Profit Factor (50%)                                                  1.21166
+Profit Factor (75%)                                                 1.655093
+SQN (25%)                                                          -0.481475
+SQN (50%)                                                           0.230976
+SQN (75%)                                                           0.794462

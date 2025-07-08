@@ -1,0 +1,33 @@
+--- 最佳参数组合 (基于最高平均夏普比率) ---
+
+params                    {'atr_len': 10, 'fact': 3.0, 'training_data_pe...
+Num Stocks Tested                                                      5402
+Total Trades                                                              0
+Sharpe Ratio                                                            NaN
+Return [%]                                                              0.0
+Max. Drawdown [%]                                                       0.0
+Duration                                        891 days 10:25:22.102924848
+Exposure Time [%]                                                       0.0
+Equity Final [$]                                                   100000.0
+Equity Peak [$]                                                    100000.0
+Buy & Hold Return [%]                                             29.701881
+Return (Ann.) [%]                                                       0.0
+Volatility (Ann.) [%]                                                   0.0
+CAGR [%]                                                                0.0
+Sortino Ratio                                                           NaN
+Calmar Ratio                                                            NaN
+Alpha [%]                                                               0.0
+Beta                                                                    0.0
+Avg. Drawdown [%]                                                       NaN
+Max. Drawdown Duration                                                  NaN
+Avg. Drawdown Duration                                                  NaN
+Win Rate [%]                                                            NaN
+Best Trade [%]                                                          NaN
+Worst Trade [%]                                                         NaN
+Avg. Trade [%]                                                          NaN
+Max. Trade Duration                                                     NaN
+Avg. Trade Duration                                                     NaN
+Profit Factor                                                           NaN
+Expectancy [%]                                                          NaN
+SQN                                                                     NaN
+Kelly Criterion                                                         NaN

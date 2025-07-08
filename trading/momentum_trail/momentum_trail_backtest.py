@@ -56,5 +56,7 @@ if __name__ == "__main__":
         strategy_class=STRATEGY_TO_TEST,
         param_grid=param_grid,
         data_dir=data_dir,
-        results_dir=results_dir
+        results_dir=results_dir,
+        start_date='2024-01-01',
+        end_date='2025-07-08'
     )

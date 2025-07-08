@@ -29,8 +29,8 @@ class MlAdaptiveSuperTrendStrategy(Strategy):
         # Bullish signal: direction crosses from -1 (down) to 1 (up)
         if self.direction[-2] == -1 and self.direction[-1] == 1:
             self.position.close()
-            self.buy()
+            self.buy(sl=self.data.Close[-1] * 0.95, tp=self.data.Close[-1] * 1.15)
         # Bearish signal: direction crosses from 1 (up) to -1 (down)
-        elif self.direction[-2] == 1 and self.direction[-1] == -1:
+        if self.direction[-2] == 1 and self.direction[-1] == -1:
             self.position.close()
-            self.sell() 
+            self.sell(sl=self.data.Close[-1] * 1.05, tp=self.data.Close[-1] * 0.85)

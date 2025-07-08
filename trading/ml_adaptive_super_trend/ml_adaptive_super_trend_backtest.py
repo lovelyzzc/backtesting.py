@@ -19,22 +19,24 @@ if __name__ == "__main__":
     # MlAdaptiveSuperTrendStrategy 参数:
     # atr_len, fact, training_data_period, highvol, midvol, lowvol
     param_grid = {
-        'atr_len': [10, 20],
-        'fact': [2.0, 3.0],
-        'training_data_period': [100, 200]
+        'atr_len': [10],
+        'fact': [3.0],
+        'training_data_period': [100]
         # 'highvol', 'midvol', 'lowvol' are kept as default for this example
     }
 
     # 3. 定义数据和结果目录
     script_dir = os.path.dirname(os.path.abspath(__file__))
     # 注意: 请确保您的CSV数据文件存放在这个目录中
-    data_dir = os.path.join(script_dir, 'data') 
-    results_dir = os.path.join(script_dir, 'results')
+    data_dir = os.path.join(script_dir, '..', 'tushare_data', 'daily')
+    results_dir = os.path.join(script_dir, '..', 'results')
 
     # 4. 运行参数优化
     run_parameter_optimization(
         strategy_class=STRATEGY_TO_TEST,
         param_grid=param_grid,
         data_dir=data_dir,
-        results_dir=results_dir
+        results_dir=results_dir,
+        start_date='2023-01-01',
+        end_date='2025-07-08'
     ) 

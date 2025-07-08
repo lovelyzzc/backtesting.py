@@ -45,7 +45,7 @@ def sync_all_stock_basic():
 
 def sync_all_daily_data(start_date="20200101", end_date=None):
     """
-    同步所有A股的日线数据
+    同步所有A股的日线数据，支持增量更新。
     """
     if not os.path.exists(STOCK_BASIC_FILE):
         print(f"未找到股票基本信息文件: {STOCK_BASIC_FILE}")
@@ -67,20 +67,44 @@ def sync_all_daily_data(start_date="20200101", end_date=None):
         ts_code = str(row["ts_code"])
         file_path = os.path.join(DAILY_DATA_PATH, f"{ts_code}.csv")
         
-        print(f"[{i + 1}/{total_stocks}] 正在同步 {ts_code} ({row['name']}) 的日线数据...")
+        print(f"[{i + 1}/{total_stocks}] 正在处理 {ts_code} ({row['name']})...")
+
+        # --- 增量更新逻辑 ---
+        sync_start_date = start_date
+        is_incremental = False
+        if os.path.exists(file_path):
+            try:
+                # 读取本地数据最后一条记录的日期
+                # 为了效率，可以只读取最后一行的日期，但直接用pandas更简单鲁棒
+                # 不使用 usecols 来规避 linter 的类型检查问题
+                existing_df = pd.read_csv(file_path)
+                if not existing_df.empty:
+                    last_date = pd.to_datetime(existing_df['Date'].iloc[-1])
+                    # 新的开始日期是本地最后日期的下一天
+                    sync_start_date = (last_date + pd.Timedelta(days=1)).strftime('%Y%m%d')
+                    is_incremental = True
+            except Exception as e:
+                print(f"  -> 读取本地数据 {file_path} 失败: {e}。将执行全量同步。")
+        
+        mode_str = "增量" if is_incremental else "全量"
+        print(f"  -> 模式: {mode_str}同步, 起始日期: {sync_start_date}")
 
         try:
+            # 如果计算出的起始日期大于结束日期，说明数据已经是最新
+            if sync_start_date > end_date:
+                print(f"  -> {ts_code} 数据已是最新，无需更新。")
+                continue
+
             # 使用 tushare.pro_bar 获取后复权日线数据
             df = ts.pro_bar(
                 ts_code=ts_code,
                 adj="hfq",
-                start_date=start_date,
+                start_date=sync_start_date,
                 end_date=end_date,
             )
             
             if df is not None and not df.empty:
                 # --- 数据格式化以适配 backtesting.py ---
-                # 1. 重命名列
                 df.rename(columns={
                     'trade_date': 'Date',
                     'open': 'Open',
@@ -90,26 +114,29 @@ def sync_all_daily_data(start_date="20200101", end_date=None):
                     'vol': 'Volume'
                 }, inplace=True)
 
-                # 2. 将 'Date' 列转换为 datetime 对象
-                df['Date'] = pd.to_datetime(df['Date'])
+                # 将 'Date' 列转换为 datetime 对象，明确格式以提高稳定性
+                df['Date'] = pd.to_datetime(df['Date'], format='%Y%m%d')
 
-                # 3. 按日期升序排序
+                # 按日期升序排序
                 df.sort_values('Date', inplace=True)
 
-                # 4. 将 'Date' 列设为索引
+                # 将 'Date' 列设为索引
                 df.set_index('Date', inplace=True)
                 
                 # 选择 backtesting.py 需要的列
                 df = df[['Open', 'High', 'Low', 'Close', 'Volume']]
 
-                df.to_csv(file_path)
-                print(f"  -> {ts_code} 数据已保存至 {file_path}")
+                if is_incremental:
+                    df.to_csv(file_path, mode='a', header=False)
+                    print(f"  -> {ts_code} 新数据已追加至 {file_path}")
+                else:
+                    df.to_csv(file_path)
+                    print(f"  -> {ts_code} 数据已保存至 {file_path}")
             else:
-                print(f"  -> 未获取到 {ts_code} 的数据")
+                print(f"  -> 未获取到 {ts_code} 在 {sync_start_date} 之后的新数据。")
 
             # tushare pro 免费版有积分限制，每分钟不能超过一定次数的调用
-            # 设置为每分钟拉取200次，即每次请求后休眠0.3秒
-            time.sleep(0.3)
+            time.sleep(0.12)
 
         except Exception as e:
             print(f"  -> 同步 {ts_code} 数据时出错: {e}")
