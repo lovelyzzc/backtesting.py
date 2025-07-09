@@ -1,0 +1,31 @@
+--- 最佳参数组合 (基于最高平均夏普比率) ---
+
+params                    {'n_len': 5, 'atr_multiplier': 1.5}
+Num Stocks Tested                                        5402
+Total Trades                                          58424.0
+Sharpe Ratio                                         0.162212
+Return [%]                                            19.1535
+Max. Drawdown [%]                                  -19.779435
+Exposure Time [%]                                    4.039902
+Equity Final [$]                                119153.500316
+Equity Peak [$]                                 136249.294107
+Commissions [$]                                   1757.805596
+Buy & Hold Return [%]                               42.218039
+Return (Ann.) [%]                                    3.648196
+Volatility (Ann.) [%]                               16.390336
+CAGR [%]                                             2.309856
+Sortino Ratio                                        1.116678
+Calmar Ratio                                         0.961788
+Alpha [%]                                           13.765627
+Beta                                                 0.091154
+Avg. Drawdown [%]                                  -11.469482
+Win Rate [%]                                        46.601698
+Best Trade [%]                                      22.030722
+Worst Trade [%]                                     -8.424027
+Avg. Trade [%]                                       1.388919
+Profit Factor                                        2.691551
+Expectancy [%]                                       1.841062
+SQN                                                  0.115679
+Kelly Criterion                                     -0.812086
+Max. Drawdown Duration                                0.00929
+Avg. Drawdown Duration                                0.00929

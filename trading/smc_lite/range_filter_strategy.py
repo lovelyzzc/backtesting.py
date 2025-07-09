@@ -16,6 +16,8 @@ class RangeFilterStrategy(Strategy):
     
     Entry Signal: Close price crosses above the Upper Band (SMA + ATR * Multiplier).
     Exit Signal:  Close price crosses below the Lower Band (SMA - ATR * Multiplier).
+    Stop Loss:    5% loss from entry price.
+    Time Stop:    Close position after 3 days of holding.
     """
 
     # --- Strategy Parameters ---
@@ -23,6 +25,8 @@ class RangeFilterStrategy(Strategy):
     # We use n_len for both SMA and ATR periods to match the Pine Script logic.
     n_len = 10 
     atr_multiplier = 2.0
+    stop_loss_pct = 0.05  # 5%止损
+    max_holding_days = 5 # 最大持仓天数
 
     def init(self):
         """
@@ -37,6 +41,11 @@ class RangeFilterStrategy(Strategy):
             return
         
         self._indicators_ready = True
+        
+        # 初始化入场价格记录
+        self.entry_price = None
+        # 初始化入场时间记录（使用数据索引）
+        self.entry_index = None
         
         # 将数据转换为pandas Series以供pandas_ta使用
         close = pd.Series(self.data.Close)
@@ -62,12 +71,41 @@ class RangeFilterStrategy(Strategy):
         if not self._indicators_ready:
             return
         
+        # 获取当前数据索引
+        current_index = len(self.data.Close) - 1
+        
+        # --- 时间止损检查 ---
+        # 如果持仓且持仓时间达到3天，则平仓
+        if self.position and self.entry_index is not None:
+            holding_days = current_index - self.entry_index
+            if holding_days >= self.max_holding_days:
+                self.position.close()
+                self.entry_price = None  # 重置入场价格
+                self.entry_index = None  # 重置入场时间
+                return
+        
+        # --- 价格止损检查 ---
+        # 如果持仓且当前价格触发止损条件，则平仓
+        if self.position and self.entry_price is not None:
+            current_price = self.data.Close[-1]
+            # 计算从入场价格的跌幅
+            loss_pct = (self.entry_price - current_price) / self.entry_price
+            if loss_pct >= self.stop_loss_pct:
+                self.position.close()
+                self.entry_price = None  # 重置入场价格
+                self.entry_index = None  # 重置入场时间
+                return
+        
         # --- 入场条件 ---
         # 如果当前无仓位，且收盘价上穿上轨，则买入
         if not self.position and crossover(self.data.Close, self.upper_band): # type: ignore
             self.buy()
+            self.entry_price = self.data.Close[-1]  # 记录入场价格
+            self.entry_index = current_index  # 记录入场时间
 
         # --- 出场条件 ---
         # 如果当前持仓，且收盘价下穿下轨，则平仓
         elif self.position and crossover(self.lower_band, self.data.Close): # type: ignore
-            self.position.close() 
+            self.position.close()
+            self.entry_price = None  # 重置入场价格
+            self.entry_index = None  # 重置入场时间 

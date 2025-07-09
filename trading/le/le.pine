@@ -1,0 +1,104 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ROKOGALELE
+
+//@version=6
+indicator('归藏剑法（核心脚本）', overlay = true, format = format.inherit, precision = 2, timeframe = '', shorttitle = '归藏剑法（核心脚本）')
+
+// === 辅助函数 ===
+f_safe_highest(source, length) =>
+    max_length = bar_index + 1
+    safe_length = math.max(1, math.min(length, max_length))
+    ta.highest(source, safe_length)
+
+f_safe_lowest(source, length) =>
+    max_length = bar_index + 1
+    safe_length = math.max(1, math.min(length, max_length))
+    ta.lowest(source, safe_length)
+
+f_safe_highestbars(source, length) =>
+    max_length = bar_index + 1
+    safe_length = math.max(1, math.min(length, max_length))
+    ta.highestbars(source, safe_length)
+
+// === 成交量高值分析 ===
+M = input(130, title = '高成交量天数')
+HV = f_safe_highest(volume[1], M)
+N = math.min(f_safe_highestbars(volume[1], M), 10000)
+A = open[math.max(N + 1, 0)]
+B = close[math.max(N + 1, 0)]
+X1 = ta.crossover(close, A)
+X2 = close >= A
+
+// === 其他条件 ===
+X3 = volume > ta.sma(volume, 20) * 1.5
+
+// === 六脉神剑技术指标动量 ===
+[macdLine, signalLine, _] = ta.macd(close, 12, 26, 9)
+M1 = macdLine >= macdLine[1]
+k = ta.sma(ta.stoch(close, high, low, 9), 3)
+K1 = k >= k[1]
+r = ta.rsi(close, 14)
+R1 = r >= r[1]
+lwr = (ta.highest(high, 14) - close) / (ta.highest(high, 14) - ta.lowest(low, 14)) * -100
+LW = lwr <= lwr[1]
+bbi = (ta.sma(close, 3) + ta.sma(close, 6) + ta.sma(close, 12) + ta.sma(close, 24)) / 4
+BB1 = bbi >= bbi[1]
+mtm = close - close[10]
+MT = mtm >= mtm[1]
+
+X4 = (M1 ? 1 : 0) + (K1 ? 1 : 0) + (R1 ? 1 : 0) + (LW ? 1 : 0) + (BB1 ? 1 : 0) + (MT ? 1 : 0) >= 4
+
+// === 中枢计算 ===
+LELE1 = 6
+LELE2 = 13
+LELE3 = 5
+LELE4 = ta.ema(close, LELE1) - ta.ema(close, LELE2)
+LELE5 = ta.ema(LELE4, LELE3)
+
+LELE20 = ta.crossover(LELE5, LELE4)
+var float LELE21 = 0.0
+if LELE20
+    LELE21 := high
+    LELE21
+
+X5 = close >= LELE21
+X6 = ta.crossover(close, LELE21)
+
+// === 条件聚合 ===
+A1 = X3 and X4
+
+// === 牛熊决策系统 ===
+X_1 = low[1]
+X_2 = ta.sma(math.abs(low - X_1), 3) / ta.sma(math.max(low - X_1, 0), 3) * 100
+X_3 = ta.ema(close > 1.2 * close[1] ? X_2 * 10 : X_2 / 10, 3)
+X_4 = f_safe_lowest(low, 30)
+X_5 = f_safe_highest(X_3, 30)
+X_6 = low <= f_safe_lowest(low, 58) ? 1 : 0
+X_7 = ta.ema(low <= X_4 ? (X_3 + X_5 * 2) / 2 : 0, 3) / 618 * X_6
+X_8 = X_7 > 100 ? 100 : X_7
+
+// 吸筹线和趋势线计算
+absorbLine = X_7 > 0 ? X_7 : 1
+trendLine = (close / ta.sma(close, 40) - 1) * 100
+
+// === 信号计算 ===
+// 多头预警突破信号
+longWarningBreakout = (X1 and X5 or X2 and X6) and A1 and ta.crossover(trendLine, absorbLine)
+
+// 趋势线上穿吸筹线信号
+trendCrossAbsorb = ta.crossover(trendLine, absorbLine)
+
+// === 绘图（固定样式）===
+// 固定颜色和样式
+plot(absorbLine, title = '', color = color.new(#1f77b4, 0), linewidth = 2, display = display.all)
+plot(trendLine, title = '', color = color.new(#808080, 0), linewidth = 1, display = display.all)
+
+// 多头预警突破信号 - 红色箭头
+plotshape(longWarningBreakout, title = '', style = shape.triangleup, location = location.bottom, color = color.new(#ff0000, 0), size = size.small, display = display.all)
+
+// 趋势线上穿吸筹线信号 - 蓝色箭头
+plotshape(trendCrossAbsorb, title = '', style = shape.triangleup, location = location.bottom, color = color.new(#0066ff, 0), size = size.small, display = display.all)
+
+// 警报条件
+alertcondition(longWarningBreakout, title = '归藏剑法突破信号', message = '归藏剑法破局信号触发')
+alertcondition(trendCrossAbsorb, title = '趋势线上穿信号', message = '趋势线上穿吸筹线信号触发')
