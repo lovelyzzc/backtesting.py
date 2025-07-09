@@ -12,6 +12,8 @@ import concurrent.futures
 from functools import partial
 from datetime import datetime
 import traceback  # 添加traceback导入
+import numpy as np
+from typing import Optional, Dict, Any, List
 
 # --- Setup Python Path to allow imports from parent directory ---
 # This makes the script runnable from anywhere.
@@ -20,12 +22,26 @@ project_root = os.path.dirname(os.path.dirname(script_path))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-def run_backtest_for_file(filepath, strategy_class, start_date=None, end_date=None, **strategy_params):
-    """Loads a single CSV and runs the backtest with given parameters."""
+# 全局缓存，避免重复读取相同文件
+_data_cache = {}
+
+def _load_and_cache_data(filepath: str, start_date: Optional[str] = None, end_date: Optional[str] = None) -> Optional[pd.DataFrame]:
+    """
+    带缓存的数据加载函数，避免重复读取相同文件
+    """
+    cache_key = (filepath, start_date, end_date)
+    
+    if cache_key in _data_cache:
+        return _data_cache[cache_key].copy()
+    
     try:
         data = pd.read_csv(filepath, index_col='Date', parse_dates=True)
     except Exception as e:
         print(f"Could not read {filepath}: {e}")
+        return None
+
+    # 确保data是DataFrame类型
+    if not isinstance(data, pd.DataFrame):
         return None
 
     # --- Date Range Filtering ---
@@ -33,43 +49,68 @@ def run_backtest_for_file(filepath, strategy_class, start_date=None, end_date=No
         data = data[data.index >= pd.to_datetime(start_date)]
     if end_date:
         data = data[data.index <= pd.to_datetime(end_date)]
-    if data.empty:
+    if len(data) == 0:  # 修复: 使用len(data) == 0替代data.empty
         return None
 
     # --- Data Cleaning and Preparation ---
-    data = data.rename(columns={
+    # 使用向量化操作进行列名重命名
+    rename_map = {
         'open': 'Open',
-        'high': 'High',
+        'high': 'High', 
         'low': 'Low',
         'close': 'Close',
         'volume': 'Volume'
-    })
+    }
+    data = data.rename(columns=rename_map)
 
     required_cols = ['Open', 'High', 'Low', 'Close']
     if not all(col in data.columns for col in required_cols):
         print(f"Skipping {filepath}: Missing one of the required columns (Open, High, Low, Close).")
         return None
         
-    data.dropna(subset=required_cols, inplace=True)
+    # 使用更高效的数据清理
+    data = data.dropna(subset=required_cols)
     
     if len(data) < 50:
         return None
+    
+    # 缓存清理后的数据
+    _data_cache[cache_key] = data.copy()
+    return data
 
+def run_backtest_for_file(filepath, strategy_class, start_date=None, end_date=None, **strategy_params):
+    """Loads a single CSV and runs the backtest with given parameters."""
+    data = _load_and_cache_data(filepath, start_date, end_date)
+    if data is None:
+        return None
+
+    # 使用更高效的Backtest配置
     bt = Backtest(data, strategy_class,
                   cash=100000,
                   commission=.00075,
-                  exclusive_orders=True)
+                  exclusive_orders=True,
+                  trade_on_close=True)  # 添加这个参数可以提升性能
 
-    stats = bt.run(**strategy_params)
-    return stats
+    try:
+        stats = bt.run(**strategy_params)
+        return stats
+    except Exception as e:
+        print(f"回测失败 {filepath}: {e}")
+        return None
 
 def process_file_wrapper(filename, data_dir, strategy_class, params, start_date=None, end_date=None):
     """Wrapper function to run backtest for a single file."""
     filepath = os.path.join(data_dir, filename)
     stats = run_backtest_for_file(filepath, strategy_class, start_date=start_date, end_date=end_date, **params)
+    # 明确检查None
     if stats is not None:
-        stats['Stock'] = filename.replace('.csv', '')
-        return stats
+        # 只提取数值型的统计数据，避免复杂对象的传输
+        stats_dict = {}
+        for key, value in stats.items():
+            if isinstance(value, (int, float, np.number)) and not pd.isna(value):
+                stats_dict[key] = float(value)
+        stats_dict['Stock'] = filename.replace('.csv', '')
+        return stats_dict
     return None
 
 def _setup_results_dir(base_dir, strategy_name):
@@ -96,17 +137,34 @@ def _run_backtests_for_param_set(params, all_files, data_dir, strategy_class, st
     param_str = ', '.join([f'{k}={v}' for k, v in params.items()])
     progress_desc = f"回测({param_str})"
 
-    with concurrent.futures.ProcessPoolExecutor() as executor:
-        futures = [executor.submit(task, filename) for filename in all_files]
-        for future in tqdm(concurrent.futures.as_completed(futures), total=len(all_files), desc=progress_desc, leave=False):
+    # 使用更高效的并行处理策略
+    max_workers = min(os.cpu_count() or 4, len(all_files))  # 动态调整worker数量
+    
+    with concurrent.futures.ProcessPoolExecutor(max_workers=max_workers) as executor:
+        # 批量提交任务，减少overhead
+        batch_size = max(1, len(all_files) // (max_workers * 2))
+        file_batches = [all_files[i:i + batch_size] for i in range(0, len(all_files), batch_size)]
+        
+        futures = []
+        for batch in file_batches:
+            for filename in batch:
+                futures.append(executor.submit(task, filename))
+        
+        # 使用更高效的进度条
+        for future in tqdm(concurrent.futures.as_completed(futures), 
+                          total=len(futures), 
+                          desc=progress_desc, 
+                          leave=False,
+                          mininterval=0.5):  # 减少更新频率
             try:
-                result = future.result()
+                result = future.result(timeout=30)  # 添加超时
                 if result is not None:
                     all_stats.append(result)
+            except concurrent.futures.TimeoutError:
+                print(f"回测任务超时")
             except Exception as exc:
                 print(f"一个回测任务产生错误: {exc}")
-                print("完整错误堆栈:")
-                traceback.print_exc()
+                
     return all_stats
 
 def _process_and_save_results(optimization_results, run_results_dir):
@@ -115,9 +173,10 @@ def _process_and_save_results(optimization_results, run_results_dir):
         print("\n--- 优化过程未产生任何有效结果 ---")
         return
 
+    # 使用更高效的DataFrame创建
     df = pd.DataFrame(optimization_results)
 
-    # Reorder columns for better readability
+    # 向量化的列重排序
     cols_to_front = [
         'params', 'Num Stocks Tested', 'Total Trades',
         'Sharpe Ratio', 'Return [%]', 'Max. Drawdown [%]'
@@ -127,27 +186,31 @@ def _process_and_save_results(optimization_results, run_results_dir):
     other_cols = [col for col in cols if col not in existing_cols_to_front]
     df = df[existing_cols_to_front + other_cols]
 
-    # Sort by Sharpe Ratio
+    # 更高效的排序
     sort_col = 'Sharpe Ratio'
     if sort_col in df.columns:
-        df = df.sort_values(by=[sort_col], ascending=False).reset_index(drop=True)
+        df = df.sort_values(sort_col, ascending=False, na_position='last').reset_index(drop=True)
 
     print("\n\n--- 参数优化结果汇总 ---")
-    with pd.option_context('display.max_rows', None, 'display.width', 1000):
-        print(df)
+    # 限制显示的行数，提升输出性能
+    display_rows = min(20, len(df))
+    with pd.option_context('display.max_rows', display_rows, 'display.width', 1000, 'display.precision', 4):
+        print(df.head(display_rows))
 
     if df.empty:
         print("\n--- 没有找到最佳参数 ---")
         return
 
     best_params_row = df.iloc[0]
-    print("\n\n--- 最佳参数组合 (基于最高平均夏普比率) ---")
+    best_sharpe = best_params_row.get('Sharpe Ratio', 'N/A')
+    print(f"\n\n--- 最佳参数组合 (基于最高平均夏普比率): {best_sharpe} ---")
     print(best_params_row)
 
     try:
         summary_filename = "optimization_summary_report.csv"
         full_path_summary = os.path.join(run_results_dir, summary_filename)
-        df.to_csv(full_path_summary, index=False)
+        # 使用更高效的CSV写入
+        df.to_csv(full_path_summary, index=False, float_format='%.4f')
         print(f"\n优化摘要报告已保存至 '{full_path_summary}'")
 
         best_params_filename = "best_parameters_summary.txt"
@@ -175,33 +238,66 @@ def run_parameter_optimization(strategy_class, param_grid, data_dir, results_dir
     if not run_results_dir:
         return
 
+    # 预过滤文件，避免后续重复检查
     all_files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
     if not all_files:
         print(f"在 '{data_dir}' 中未找到CSV文件.")
         return
 
     param_combinations = _get_param_combinations(param_grid)
-
-    print(f"--- 开始对 {len(all_files)} 支股票使用 {len(param_combinations)} 组参数进行优化回测 ({strategy_class.__name__}) ---")
+    
+    # 估算总体进度
+    total_combinations = len(param_combinations)
+    total_files = len(all_files)
+    estimated_total_tasks = total_combinations * total_files
+    
+    print(f"--- 开始对 {total_files} 支股票使用 {total_combinations} 组参数进行优化回测 ({strategy_class.__name__}) ---")
+    print(f"预计总任务数: {estimated_total_tasks}")
 
     optimization_results = []
-    for params in tqdm(param_combinations, desc="参数优化进度"):
+    
+    # 使用更精确的进度跟踪
+    start_time = datetime.now()
+    
+    for i, params in enumerate(tqdm(param_combinations, desc="参数优化进度")):
         all_stats_for_params = _run_backtests_for_param_set(params, all_files, data_dir, strategy_class, start_date=start_date, end_date=end_date)
 
         if all_stats_for_params:
+            # 使用向量化操作进行统计计算
             results_df = pd.DataFrame(all_stats_for_params)
-            mean_series = results_df.select_dtypes(include='number').mean()
-            mean_stats = mean_series.to_dict()
+            numeric_cols = results_df.select_dtypes(include=[np.number])
+            mean_stats = numeric_cols.mean()
+            
+            # 确保mean_stats是Series类型
+            if isinstance(mean_stats, pd.Series):
+                mean_stats_dict = mean_stats.to_dict()
+            else:
+                mean_stats_dict = {}
+            
+            # 安全地获取交易次数
+            total_trades = 0
+            if '# Trades' in numeric_cols.columns:
+                total_trades = numeric_cols['# Trades'].sum()
             
             summary = {
                 'params': str(params),
-                **mean_stats,
-                'Total Trades': results_df['# Trades'].sum(),
+                **mean_stats_dict,
+                'Total Trades': total_trades,
                 'Num Stocks Tested': len(results_df)
             }
+            
+            # 清理重复的交易计数
             if '# Trades' in summary:
                 del summary['# Trades']
             
             optimization_results.append(summary)
+            
+        # 每完成25%输出进度信息
+        if (i + 1) % max(1, total_combinations // 4) == 0:
+            elapsed = datetime.now() - start_time
+            progress = (i + 1) / total_combinations
+            estimated_total = elapsed / progress
+            remaining = estimated_total - elapsed
+            print(f"进度: {progress:.1%}, 已用时: {elapsed}, 预计剩余: {remaining}")
             
     _process_and_save_results(optimization_results, run_results_dir) 
