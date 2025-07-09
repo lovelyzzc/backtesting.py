@@ -207,7 +207,7 @@ def _process_and_save_results(optimization_results, run_results_dir):
     print(best_params_row)
 
     try:
-        summary_filename = "optimization_summary_report.csv"
+        summary_filename = f"optimization_summary_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
         full_path_summary = os.path.join(run_results_dir, summary_filename)
         # 使用更高效的CSV写入
         df.to_csv(full_path_summary, index=False, float_format='%.4f')

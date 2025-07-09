@@ -1,0 +1,230 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © ROKOGALELE
+
+//@version=5
+strategy("FluidTrades - SMC Lite with Range Filter [楽] - 仅做多策略", overlay = true, max_labels_count = 500, max_boxes_count = 500, max_lines_count = 500, max_bars_back = 1000, commission_type=strategy.commission.percent, commission_value=0.1, default_qty_type=strategy.percent_of_equity, default_qty_value=100, initial_capital=10000)
+
+//
+// FluidTrades - SMC Lite 部分
+//
+
+// SETTINGS
+swing_length = input.int(10, title = '摆动高低点长度', group = 'FluidTrades SMC Lite 设置', minval = 1, maxval = 50)
+history_of_demand_to_keep = input.int(20, title = '保留历史数量', group = 'FluidTrades SMC Lite 设置', minval = 5, maxval = 50)
+box_width = input.float(10, title = '供需区域盒子宽度', group = 'FluidTrades SMC Lite 设置', minval = 1, maxval = 10, step = 0.5)
+
+// VISUAL SETTINGS
+show_zigzag = input.bool(false, title = '显示锯齿线', group = 'FluidTrades SMC Lite 视觉设置', inline = '1')
+show_price_action_labels = input.bool(false, title = '显示价格行为标签', group = 'FluidTrades SMC Lite 视觉设置', inline = '2')
+
+supply_color = input.color(color.new(#EDEDED,70), title = '供给区域', group = 'FluidTrades SMC Lite 视觉设置', inline = '3')
+supply_outline_color = input.color(color.new(color.white,75), title = '边框', group = 'FluidTrades SMC Lite 视觉设置', inline = '3')
+
+demand_color = input.color(color.new(#00FFFF,70), title = '需求区域', group = 'FluidTrades SMC Lite 视觉设置', inline = '4')
+demand_outline_color = input.color(color.new(color.white,75), title = '边框', group = 'FluidTrades SMC Lite 视觉设置', inline = '4')
+
+bos_label_color = input.color(color.white, title = 'BOS标签', group = 'FluidTrades SMC Lite 视觉设置', inline = '5')
+poi_label_color = input.color(color.white, title = 'POI标签', group = 'FluidTrades SMC Lite 视觉设置', inline = '7')
+
+swing_type_color = input.color(color.black, title = '价格行为标签', group = 'FluidTrades SMC Lite 视觉设置', inline = '8')
+zigzag_color = input.color(color.new(#000000,0), title = '锯齿线', group = 'FluidTrades SMC Lite 视觉设置', inline = '9')
+
+// FUNCTIONS
+f_array_add_pop(array, new_value_to_add) =>
+    array.unshift(array, new_value_to_add)
+    array.pop(array)
+
+f_sh_sl_labels(array, swing_type) =>
+    var string label_text = na
+    if swing_type == 1
+        if array.get(array, 0) >= array.get(array, 1)
+            label_text := 'HH'
+        else
+            label_text := 'LH'
+        label.new(bar_index - swing_length, array.get(array,0), text = label_text, style=label.style_label_down, textcolor = swing_type_color, color = color.new(swing_type_color, 100), size = size.tiny)
+    else if swing_type == -1
+        if array.get(array, 0) >= array.get(array, 1)
+            label_text := 'HL'
+        else
+            label_text := 'LL'
+        label.new(bar_index - swing_length, array.get(array,0), text = label_text, style=label.style_label_up, textcolor = swing_type_color, color = color.new(swing_type_color, 100), size = size.tiny)
+
+f_check_overlapping(new_poi, box_array, atr) =>
+    atr_threshold = atr * 2
+    okay_to_draw = true
+    for i = 0 to array.size(box_array) - 1
+        top = box.get_top(array.get(box_array, i))
+        bottom = box.get_bottom(array.get(box_array, i))
+        poi = (top + bottom) / 2
+        upper_boundary = poi + atr_threshold
+        lower_boundary = poi - atr_threshold
+        if new_poi >= lower_boundary and new_poi <= upper_boundary
+            okay_to_draw := false
+            break
+        else 
+            okay_to_draw := true
+    okay_to_draw
+
+f_supply_demand(value_array, bn_array, box_array, label_array, box_type, atr) =>
+    atr_buffer = atr * (box_width / 10)
+    box_left = array.get(bn_array, 0)
+    box_right = bar_index
+    var float box_top = 0.00
+    var float box_bottom = 0.00
+    var float poi = 0.00
+    if box_type == 1
+        box_top := array.get(value_array, 0)
+        box_bottom := box_top - atr_buffer
+        poi := (box_top + box_bottom) / 2
+    else if box_type == -1
+        box_bottom := array.get(value_array, 0)
+        box_top := box_bottom + atr_buffer
+        poi := (box_top + box_bottom) / 2
+    okay_to_draw = f_check_overlapping(poi, box_array, atr)
+    if box_type == 1 and okay_to_draw
+        box.delete( array.get(box_array, array.size(box_array) - 1) )
+        f_array_add_pop(box_array, box.new( left = box_left, top = box_top, right = box_right, bottom = box_bottom, border_color = supply_outline_color, bgcolor = supply_color, extend = extend.right, text = '供给区域', text_halign = text.align_center, text_valign = text.align_center, text_color = poi_label_color, text_size = size.small, xloc = xloc.bar_index))
+        box.delete( array.get(label_array, array.size(label_array) - 1) )
+        f_array_add_pop(label_array, box.new( left = box_left, top = poi, right = box_right, bottom = poi, border_color = color.new(poi_label_color,90), bgcolor = color.new(poi_label_color,90), extend = extend.right, text = 'POI', text_halign = text.align_left, text_valign = text.align_center, text_color = poi_label_color, text_size = size.small, xloc = xloc.bar_index))
+    else if box_type == -1 and okay_to_draw
+        box.delete( array.get(box_array, array.size(box_array) - 1) )
+        f_array_add_pop(box_array, box.new( left = box_left, top = box_top, right = box_right, bottom = box_bottom, border_color = demand_outline_color, bgcolor = demand_color, extend = extend.right,  text = '需求区域', text_halign = text.align_center, text_valign = text.align_center, text_color = poi_label_color, text_size = size.small, xloc = xloc.bar_index))
+        box.delete( array.get(label_array, array.size(label_array) - 1) )
+        f_array_add_pop(label_array, box.new( left = box_left, top = poi, right = box_right, bottom = poi, border_color = color.new(poi_label_color,90), bgcolor = color.new(poi_label_color,90), extend = extend.right,  text = 'POI', text_halign = text.align_left, text_valign = text.align_center, text_color = poi_label_color, text_size = size.small, xloc = xloc.bar_index))
+
+f_sd_to_bos(box_array, bos_array, label_array, zone_type) =>
+    if zone_type == 1
+        for i = 0 to array.size(box_array) - 1
+            level_to_break = box.get_top(array.get(box_array,i))
+            if close >= level_to_break
+                copied_box = box.copy(array.get(box_array,i))
+                f_array_add_pop(bos_array, copied_box)
+                mid = (box.get_top(array.get(box_array,i)) + box.get_bottom(array.get(box_array,i))) / 2
+                box.set_top(array.get(bos_array,0), mid)
+                box.set_bottom(array.get(bos_array,0), mid)
+                box.set_extend( array.get(bos_array,0), extend.none)
+                box.set_right( array.get(bos_array,0), bar_index)
+                box.set_text( array.get(bos_array,0), 'BOS' )
+                box.set_text_color( array.get(bos_array,0), bos_label_color)
+                box.set_text_size( array.get(bos_array,0), size.small)
+                box.set_text_halign( array.get(bos_array,0), text.align_center)
+                box.set_text_valign( array.get(bos_array,0), text.align_center)
+                box.delete(array.get(box_array, i))
+                box.delete(array.get(label_array, i))
+    if zone_type == -1
+        for i = 0 to array.size(box_array) - 1
+            level_to_break = box.get_bottom(array.get(box_array,i))
+            if close <= level_to_break
+                copied_box = box.copy(array.get(box_array,i))
+                f_array_add_pop(bos_array, copied_box)
+                mid = (box.get_top(array.get(box_array,i)) + box.get_bottom(array.get(box_array,i))) / 2
+                box.set_top(array.get(bos_array,0), mid)
+                box.set_bottom(array.get(bos_array,0), mid)
+                box.set_extend( array.get(bos_array,0), extend.none)
+                box.set_right( array.get(bos_array,0), bar_index)
+                box.set_text( array.get(bos_array,0), 'BOS' )
+                box.set_text_color( array.get(bos_array,0), bos_label_color)
+                box.set_text_size( array.get(bos_array,0), size.small)
+                box.set_text_halign( array.get(bos_array,0), text.align_center)
+                box.set_text_valign( array.get(bos_array,0), text.align_center)
+                box.delete(array.get(box_array, i))
+                box.delete(array.get(label_array, i))
+
+f_extend_box_endpoint(box_array) =>
+    for i = 0 to array.size(box_array) - 1
+        box.set_right(array.get(box_array, i), bar_index + 100)
+
+// VARIABLES
+var float[] sh_values = array.new_float(history_of_demand_to_keep, 0.00)
+var float[] sl_values = array.new_float(history_of_demand_to_keep, 0.00)
+var int[] sh_bn = array.new_int(history_of_demand_to_keep, 0)
+var int[] sl_bn = array.new_int(history_of_demand_to_keep, 0)
+var box[] supply_boxes = array.new_box(history_of_demand_to_keep, na)
+var box[] demand_boxes = array.new_box(history_of_demand_to_keep, na)
+var box[] supply_labels = array.new_box(history_of_demand_to_keep, na)
+var box[] demand_labels = array.new_box(history_of_demand_to_keep, na)
+var box[] bos_boxes = array.new_box(history_of_demand_to_keep, na)
+
+// CALCULATIONS
+atr = ta.atr(14)
+
+// 修正pivot高低点的获取方式
+sh = ta.pivothigh(high, swing_length, swing_length)
+sh_found = not na(sh)
+sl = ta.pivotlow(low, swing_length, swing_length)
+sl_found = not na(sl)
+
+if sh_found
+    f_array_add_pop(sh_values, sh)
+    f_array_add_pop(sh_bn, bar_index - swing_length)
+    if show_price_action_labels
+        f_sh_sl_labels(sh_values, 1)
+    if show_zigzag
+        line.new(array.get(sh_bn, 1), array.get(sh_values, 1), array.get(sh_bn, 0), array.get(sh_values, 0), color = zigzag_color, width = 1)
+    f_supply_demand(sh_values, sh_bn, supply_boxes, supply_labels, 1, atr)
+    f_sd_to_bos(demand_boxes, bos_boxes, demand_labels, 1)
+
+if sl_found
+    f_array_add_pop(sl_values, sl)
+    f_array_add_pop(sl_bn, bar_index - swing_length)
+    if show_price_action_labels
+        f_sh_sl_labels(sl_values, -1)
+    if show_zigzag
+        line.new(array.get(sl_bn, 1), array.get(sl_values, 1), array.get(sl_bn, 0), array.get(sl_values, 0), color = zigzag_color, width = 1)
+    f_supply_demand(sl_values, sl_bn, demand_boxes, demand_labels, -1, atr)
+    f_sd_to_bos(supply_boxes, bos_boxes, supply_labels, -1)
+
+f_extend_box_endpoint(supply_boxes)
+f_extend_box_endpoint(demand_boxes)
+
+// Range Filter Buy and Sell 5min
+src = input(close, title="价格源")
+len = input.int(10, minval=1, title="均线长度")
+mult = input.float(2.0, minval=0.001, maxval=5, title="乘数")
+
+ma = ta.sma(src, len)
+offset = ta.atr(len) * mult
+
+upper = ma + offset
+lower = ma - offset
+
+// 颜色定义
+upColor = color.rgb(76, 175, 80, 90)    // 绿色带透明度
+downColor = color.rgb(255, 82, 82, 90)   // 红色带透明度
+
+// 确定柱状颜色和信号
+isGreen = close > upper
+isRed = close < lower
+isGray = not isGreen and not isRed
+
+barcolor = isGreen ? upColor : isRed ? downColor : na
+
+// 绘制彩色背景
+bgcolor(barcolor)
+
+// 生成交易信号
+buySignal = ta.crossover(close, upper)   // 买入信号
+sellSignal = ta.crossunder(close, lower) // 卖出信号
+
+// 交易策略设置 - 只做多头
+// 入场条件：Buy Signal
+if buySignal
+    strategy.entry("买入", strategy.long)
+
+// 出场条件：Sell Signal
+if sellSignal and strategy.position_size > 0
+    strategy.close("买入", comment="卖出信号")
+
+// 绘制信号
+plotshape(buySignal, "买入信号", shape.triangleup, location.belowbar, color.green, size = size.small)
+plotshape(sellSignal, "卖出信号", shape.triangledown, location.abovebar, color.red, size = size.small)
+
+// 绘制线条
+plot(upper, "上轨", color.new(color.green, 0))
+plot(lower, "下轨", color.new(color.red, 0))
+plot(ma, "均线", color.new(color.yellow, 0))
+
+// 警报条件
+alertcondition(buySignal, title="买入警报", message="买入信号")
+alertcondition(sellSignal, title="卖出警报", message="卖出信号")
+
