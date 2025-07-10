@@ -1,0 +1,11 @@
+{
+  "total_backtests": 0,
+  "cache_hits": 0,
+  "early_stops": 0,
+  "start_time": 1752170264.5881913,
+  "phase_times": {
+    "grid": 551.4477381706238,
+    "bayesian": 897.1120676994324,
+    "refined": 449.04410696029663
+  }
+}

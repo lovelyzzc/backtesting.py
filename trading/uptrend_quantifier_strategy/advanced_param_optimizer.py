@@ -11,6 +11,7 @@
 - 📊 实时监控：性能分析和进度预测
 - 🎯 参数依赖分析：识别参数相关性，减少无效组合
 - 💡 自适应采样：根据结果动态调整搜索策略
+- 📈 详细指标记录：记录所有可用的backtesting统计指标
 ================================================================================
 """
 
@@ -53,6 +54,7 @@ class AdvancedParameterOptimizer:
     """
     高性能参数优化器
     基于MultiBacktest思路的全面性能优化
+    增强版：记录详细的stats指标
     """
     
     def __init__(self, 
@@ -96,6 +98,9 @@ class AdvancedParameterOptimizer:
             'start_time': None,
             'phase_times': {}
         }
+        
+        # 详细结果存储
+        self.detailed_results = []  # 存储所有参数组合的详细stats
     
     def _setup_performance_components(self):
         """
@@ -140,10 +145,11 @@ class AdvancedParameterOptimizer:
                 data = data[data.index <= pd.to_datetime(self.end_date)]
             
             # 数据清理
-            data = data.rename(columns={
-                'open': 'Open', 'high': 'High', 
-                'low': 'Low', 'close': 'Close', 'volume': 'Volume'
-            })
+            if hasattr(data, 'rename'):
+                data = data.rename(columns={
+                    'open': 'Open', 'high': 'High', 
+                    'low': 'Low', 'close': 'Close', 'volume': 'Volume'
+                })
             
             required_cols = ['Open', 'High', 'Low', 'Close']
             if not all(col in data.columns for col in required_cols):
@@ -168,9 +174,67 @@ class AdvancedParameterOptimizer:
         """
         return str(sorted(params.items()))
     
+    def _extract_detailed_stats(self, stats) -> Dict:
+        """
+        提取详细的回测统计指标
+        """
+        # 定义所有可能的统计指标
+        stat_keys = [
+            'Return [%]',
+            'Buy & Hold Return [%]',
+            'Return (Ann.) [%]',
+            'Volatility (Ann.) [%]',
+            'Sharpe Ratio',
+            'Sortino Ratio',
+            'Calmar Ratio',
+            'Max. Drawdown [%]',
+            'Avg. Drawdown [%]',
+            'Max. Drawdown Duration',
+            'Avg. Drawdown Duration',
+            '# Trades',
+            'Win Rate [%]',
+            'Best Trade [%]',
+            'Worst Trade [%]',
+            'Avg. Trade [%]',
+            'Max. Trade Duration',
+            'Avg. Trade Duration',
+            'Profit Factor',
+            'Expectancy [%]',
+            'SQN'
+        ]
+        
+        detailed_stats = {}
+        
+        for key in stat_keys:
+            try:
+                value = stats.get(key, np.nan)
+                
+                # 处理不同类型的值
+                if value is None or pd.isna(value):
+                    detailed_stats[key] = np.nan
+                elif isinstance(value, (int, float)):
+                    detailed_stats[key] = float(value)
+                elif isinstance(value, pd.Timedelta):
+                    # 转换时间间隔为天数
+                    detailed_stats[key] = float(value.total_seconds() / 86400)
+                elif hasattr(value, 'days'):
+                    # 处理其他时间类型
+                    detailed_stats[key] = float(value.days)
+                else:
+                    # 尝试转换为float
+                    try:
+                        detailed_stats[key] = float(str(value))
+                    except (ValueError, TypeError):
+                        detailed_stats[key] = np.nan
+                        
+            except Exception:
+                detailed_stats[key] = np.nan
+        
+        return detailed_stats
+    
     def _run_single_backtest(self, filepath: str, params: Dict) -> Optional[Dict]:
         """
-        运行单个回测，带缓存优化
+        运行单个回测，记录详细的stats指标
         """
         # 检查参数缓存
         param_hash = self._hash_params(params)
@@ -194,15 +258,23 @@ class AdvancedParameterOptimizer:
             # 运行回测
             stats = bt.run(**params)
             
-            # 提取关键指标
+            # 提取基本信息
+            stock_name = os.path.splitext(os.path.basename(filepath))[0]
+            
+            # 提取详细的统计指标
+            detailed_stats = self._extract_detailed_stats(stats)
+            
+            # 构建完整结果
             result = {
-                'Stock': os.path.splitext(os.path.basename(filepath))[0],
-                'Sharpe Ratio': float(stats.get('Sharpe Ratio', 0)),
-                'Return [%]': float(stats.get('Return [%]', 0)),
-                'Max. Drawdown [%]': float(stats.get('Max. Drawdown [%]', 0)),
-                '# Trades': int(stats.get('# Trades', 0)),
-                'Win Rate [%]': float(stats.get('Win Rate [%]', 0)),
-                'Profit Factor': float(stats.get('Profit Factor', 0))
+                'Stock': stock_name,
+                **detailed_stats,  # 包含所有详细指标
+                # 保留核心指标以便快速访问
+                'Sharpe_Ratio_Core': float(stats.get('Sharpe Ratio', 0) or 0),
+                'Return_Pct_Core': float(stats.get('Return [%]', 0) or 0),
+                'Max_Drawdown_Core': float(stats.get('Max. Drawdown [%]', 0) or 0),
+                'Trades_Count_Core': int(stats.get('# Trades', 0) or 0),
+                'Win_Rate_Core': float(stats.get('Win Rate [%]', 0) or 0),
+                'Profit_Factor_Core': float(stats.get('Profit Factor', 0) or 0)
             }
             
             # 缓存结果
@@ -218,6 +290,7 @@ class AdvancedParameterOptimizer:
     def _evaluate_param_set(self, params: Dict) -> float:
         """
         评估参数组合，返回综合得分
+        同时收集详细的stats数据
         """
         results = []
         
@@ -238,14 +311,23 @@ class AdvancedParameterOptimizer:
         if not results:
             return -999.0  # 无效参数组合的惩罚分数
         
-        # 计算综合得分
+        # 将详细结果添加到集合中，包含参数信息
+        for result in results:
+            detailed_result = {
+                **result,
+                **params,  # 添加参数信息
+                'param_hash': self._hash_params(params)
+            }
+            self.detailed_results.append(detailed_result)
+        
+        # 计算综合得分（使用核心指标以保持性能）
         df = pd.DataFrame(results)
         
         # 多指标综合评分
-        sharpe_mean = df['Sharpe Ratio'].mean()
-        return_mean = df['Return [%]'].mean()
-        drawdown_mean = abs(df['Max. Drawdown [%]'].mean())
-        trades_mean = df['# Trades'].mean()
+        sharpe_mean = df['Sharpe_Ratio_Core'].mean()
+        return_mean = df['Return_Pct_Core'].mean()
+        drawdown_mean = abs(df['Max_Drawdown_Core'].mean())
+        trades_mean = df['Trades_Count_Core'].mean()
         
         # 综合得分公式（可以根据需要调整权重）
         score = (
@@ -533,6 +615,16 @@ class AdvancedParameterOptimizer:
         results_path = os.path.join(self.run_dir, 'detailed_results.csv')
         results_df.to_csv(results_path, index=False)
         
+        # ===== 新增：保存每个参数组合的详细stats =====
+        if self.detailed_results:
+            detailed_df = pd.DataFrame(self.detailed_results)
+            detailed_stats_path = os.path.join(self.run_dir, 'parameter_detailed_stats.csv')
+            detailed_df.to_csv(detailed_stats_path, index=False)
+            print(f"📊 详细stats已保存到: parameter_detailed_stats.csv")
+            
+            # 保存统计摘要
+            self._save_stats_summary(detailed_df)
+        
         # 保存最佳参数
         best_params = results_df.iloc[0]
         best_params_path = os.path.join(self.run_dir, 'best_parameters.txt')
@@ -555,6 +647,66 @@ class AdvancedParameterOptimizer:
             json.dump(self.performance_stats, f, indent=2, default=str)
         
         print(f"📁 结果已保存到: {self.run_dir}")
+    
+    def _save_stats_summary(self, detailed_df: pd.DataFrame):
+        """
+        保存详细统计指标的摘要分析
+        """
+        summary_path = os.path.join(self.run_dir, 'stats_summary_analysis.txt')
+        
+        # 计算各指标的统计信息
+        stats_columns = [col for col in detailed_df.columns 
+                        if col not in ['Stock', 'param_hash'] and 
+                        not col.startswith(('len_', 'adx_'))]
+        
+        with open(summary_path, 'w', encoding='utf-8') as f:
+            f.write("📈 详细Stats指标分析摘要\n")
+            f.write("=" * 60 + "\n\n")
+            
+            f.write(f"总测试组合数: {len(detailed_df)}\n")
+            f.write(f"涉及股票数: {detailed_df['Stock'].nunique()}\n")
+            f.write(f"参数组合数: {detailed_df['param_hash'].nunique()}\n\n")
+            
+            f.write("📊 关键指标统计:\n")
+            f.write("-" * 40 + "\n")
+            
+            # 对每个统计指标进行分析
+            key_metrics = [
+                'Sharpe Ratio', 'Return [%]', 'Max. Drawdown [%]', 
+                '# Trades', 'Win Rate [%]', 'Profit Factor'
+            ]
+            
+            for metric in key_metrics:
+                if metric in detailed_df.columns:
+                    values = detailed_df[metric].dropna()
+                    if len(values) > 0:
+                        f.write(f"\n{metric}:\n")
+                        f.write(f"  平均值: {values.mean():.4f}\n")
+                        f.write(f"  中位数: {values.median():.4f}\n")
+                        f.write(f"  标准差: {values.std():.4f}\n")
+                        f.write(f"  最小值: {values.min():.4f}\n")
+                        f.write(f"  最大值: {values.max():.4f}\n")
+                        f.write(f"  有效样本: {len(values)}\n")
+            
+            # 最佳参数组合的详细指标
+            f.write("\n" + "=" * 40 + "\n")
+            f.write("🏆 最佳参数组合的详细指标:\n")
+            f.write("-" * 40 + "\n")
+            
+            # 按参数组合分组，计算平均表现
+            param_cols = [col for col in detailed_df.columns if col.startswith(('len_', 'adx_'))]
+            if param_cols:
+                param_groups = detailed_df.groupby(param_cols)[stats_columns].mean()
+                best_combo_idx = param_groups['Sharpe Ratio'].idxmax()
+                
+                f.write(f"最佳参数组合: {dict(zip(param_cols, best_combo_idx))}\n\n")
+                
+                for metric in key_metrics:
+                    if metric in param_groups.columns:
+                        value = param_groups.loc[best_combo_idx, metric]
+                        f.write(f"{metric}: {value:.4f}\n")
+        
+        print(f"📈 详细分析摘要已保存到: stats_summary_analysis.txt")
     
     def _print_performance_report(self):
         """
