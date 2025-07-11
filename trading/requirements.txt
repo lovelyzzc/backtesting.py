@@ -7,3 +7,6 @@ setuptools
 numpy<2.0.0
 memory_profiler
 scikit-learn
+numba
+matplotlib
+seaborn

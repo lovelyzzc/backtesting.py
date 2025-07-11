@@ -1,0 +1,2 @@
+params,Num_Stocks_Tested,Total_Trades,Return [%],Max. Drawdown [%],Exposure Time [%],Equity Final [$],Equity Peak [$],Buy & Hold Return [%],Return (Ann.) [%],Volatility (Ann.) [%],CAGR [%],Alpha [%],Beta,# Trades,_trades,Data_Points,Commissions [$],trades_count
+"{'len_short': 7, 'len_mid': 31, 'len_long': 160, 'adx_len': 12, 'adx_threshold': 21, 'stop_loss_pct': 0.05}",5402,2703.000000,1.584560,-3.625655,1.039298,101584.560482,104690.932421,61.744705,1.027629,4.307629,0.644938,0.625081,0.011865,0.500370,,360.302110,162.439265,1.096107

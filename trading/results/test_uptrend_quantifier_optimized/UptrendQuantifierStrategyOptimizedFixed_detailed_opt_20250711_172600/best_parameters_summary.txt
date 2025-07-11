@@ -1,0 +1,21 @@
+--- 最佳参数组合 (基于最高平均夏普比率) ---
+
+params                   {'len_short': 7, 'len_mid': 31, 'len_long': 16...
+Num_Stocks_Tested                                                     5402
+Total_Trades                                                        2703.0
+Return [%]                                                         1.58456
+Max. Drawdown [%]                                                -3.625655
+Exposure Time [%]                                                 1.039298
+Equity Final [$]                                             101584.560482
+Equity Peak [$]                                              104690.932421
+Buy & Hold Return [%]                                            61.744705
+Return (Ann.) [%]                                                 1.027629
+Volatility (Ann.) [%]                                             4.307629
+CAGR [%]                                                          0.644938
+Alpha [%]                                                         0.625081
+Beta                                                              0.011865
+# Trades                                                           0.50037
+_trades                                                                NaN
+Data_Points                                                      360.30211
+Commissions [$]                                                 162.439265
+trades_count                                                      1.096107

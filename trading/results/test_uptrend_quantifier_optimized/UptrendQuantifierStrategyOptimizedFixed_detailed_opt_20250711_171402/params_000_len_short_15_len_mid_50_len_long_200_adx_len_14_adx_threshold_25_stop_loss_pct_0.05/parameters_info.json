@@ -1,0 +1,13 @@
+{
+  "parameters": {
+    "len_short": 15,
+    "len_mid": 50,
+    "len_long": 200,
+    "adx_len": 14,
+    "adx_threshold": 25,
+    "stop_loss_pct": 0.05
+  },
+  "num_stocks_tested": 5233,
+  "successful_backtests": 5233,
+  "timestamp": "2025-07-11T17:14:12.916681"
+}
