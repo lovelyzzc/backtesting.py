@@ -1,0 +1,133 @@
+//@version=5
+indicator("缠论买卖点指标 (Chan Theory Buy/Sell Points)", overlay=true)
+
+// 输入参数
+fractal_period = input.int(5, "分形周期", minval=3)
+trend_period = input.int(20, "趋势周期", minval=10)
+show_fractals = input.bool(true, "显示分形")
+show_trend = input.bool(true, "显示中枢")
+show_buy_points = input.bool(true, "显示买点")
+show_sell_points = input.bool(true, "显示卖点")
+
+// 颜色设置
+color_buy1 = input.color(color.new(color.green, 0), "第一类买点颜色")
+color_buy2 = input.color(color.new(color.lime, 0), "第二类买点颜色")
+color_buy3 = input.color(color.new(color.aqua, 0), "第三类买点颜色")
+color_sell1 = input.color(color.new(color.red, 0), "第一类卖点颜色")
+color_sell2 = input.color(color.new(color.orange, 0), "第二类卖点颜色")
+color_sell3 = input.color(color.new(color.fuchsia, 0), "第三类卖点颜色")
+
+// 分形识别
+isFractalUp = high[2] > high[1] and high[2] > high[3] and high[2] > high[0] and high[2] > high[4]
+isFractalDown = low[2] < low[1] and low[2] < low[3] and low[2] < low[0] and low[2] < low[4]
+
+// 标记分形
+plotshape(show_fractals and isFractalUp, style=shape.triangledown, location=location.abovebar, 
+          color=color.red, size=size.tiny, offset=-2)
+plotshape(show_fractals and isFractalDown, style=shape.triangleup, location=location.belowbar, 
+          color=color.green, size=size.tiny, offset=-2)
+
+// 中枢计算
+var float zhongshu_high = na
+var float zhongshu_low = na
+var int zhongshu_start = na
+var int zhongshu_count = 0
+
+// 简化的中枢识别逻辑
+overlap_high = math.min(high[1], high[2], high[3])
+overlap_low = math.max(low[1], low[2], low[3])
+is_overlap = overlap_high > overlap_low
+
+if is_overlap
+    if na(zhongshu_start)
+        zhongshu_start := bar_index - 3
+        zhongshu_high := overlap_high
+        zhongshu_low := overlap_low
+        zhongshu_count := 1
+    else
+        zhongshu_high := math.min(zhongshu_high, overlap_high)
+        zhongshu_low := math.max(zhongshu_low, overlap_low)
+        zhongshu_count := zhongshu_count + 1
+else
+    if zhongshu_count >= 3
+        // 绘制中枢
+        if show_trend
+            box.new(zhongshu_start, zhongshu_high, bar_index[1], zhongshu_low, 
+                    border_color=color.blue, bgcolor=color.new(color.blue, 90))
+    zhongshu_start := na
+    zhongshu_count := 0
+
+// 趋势识别
+ema_fast = ta.ema(close, trend_period)
+ema_slow = ta.ema(close, trend_period * 2)
+trend_up = ema_fast > ema_slow
+trend_down = ema_fast < ema_slow
+
+// MACD背离检测
+[macdLine, signalLine, histLine] = ta.macd(close, 12, 26, 9)
+macd_bullish_div = low[2] < low[6] and macdLine[2] > macdLine[6] and isFractalDown
+macd_bearish_div = high[2] > high[6] and macdLine[2] < macdLine[6] and isFractalUp
+
+// 第一类买点：下跌趋势中，新低后的底分形
+buy1_condition = trend_down and isFractalDown and low[2] < ta.lowest(low[3], 10)
+
+// 第二类买点：第一类买点后的回调不创新低的底分形
+var float buy1_low = na
+if buy1_condition
+    buy1_low := low[2]
+buy2_condition = not na(buy1_low) and isFractalDown and low[2] > buy1_low and close > buy1_low
+
+// 第三类买点：中枢下沿附近的底分形或MACD底背离
+buy3_condition = not na(zhongshu_low) and isFractalDown and 
+                 low[2] <= zhongshu_low * 1.02 and close > zhongshu_low
+buy3_condition := buy3_condition or (macd_bullish_div and trend_down)
+
+// 第一类卖点：上涨趋势中，新高后的顶分形
+sell1_condition = trend_up and isFractalUp and high[2] > ta.highest(high[3], 10)
+
+// 第二类卖点：第一类卖点后的反弹不创新高的顶分形
+var float sell1_high = na
+if sell1_condition
+    sell1_high := high[2]
+sell2_condition = not na(sell1_high) and isFractalUp and high[2] < sell1_high and close < sell1_high
+
+// 第三类卖点：中枢上沿附近的顶分形或MACD顶背离
+sell3_condition = not na(zhongshu_high) and isFractalUp and 
+                  high[2] >= zhongshu_high * 0.98 and close < zhongshu_high
+sell3_condition := sell3_condition or (macd_bearish_div and trend_up)
+
+// 绘制买卖点
+if show_buy_points
+    plotshape(buy1_condition, style=shape.labelup, location=location.belowbar, 
+              color=color_buy1, text="买1", textcolor=color.white, size=size.small, offset=-2)
+    plotshape(buy2_condition, style=shape.labelup, location=location.belowbar, 
+              color=color_buy2, text="买2", textcolor=color.white, size=size.small, offset=-2)
+    plotshape(buy3_condition, style=shape.labelup, location=location.belowbar, 
+              color=color_buy3, text="买3", textcolor=color.white, size=size.small, offset=-2)
+
+if show_sell_points
+    plotshape(sell1_condition, style=shape.labeldown, location=location.abovebar, 
+              color=color_sell1, text="卖1", textcolor=color.white, size=size.small, offset=-2)
+    plotshape(sell2_condition, style=shape.labeldown, location=location.abovebar, 
+              color=color_sell2, text="卖2", textcolor=color.white, size=size.small, offset=-2)
+    plotshape(sell3_condition, style=shape.labeldown, location=location.abovebar, 
+              color=color_sell3, text="卖3", textcolor=color.white, size=size.small, offset=-2)
+
+// 警报条件
+alertcondition(buy1_condition, title="第一类买点", message="检测到第一类买点信号")
+alertcondition(buy2_condition, title="第二类买点", message="检测到第二类买点信号")
+alertcondition(buy3_condition, title="第三类买点", message="检测到第三类买点信号")
+alertcondition(sell1_condition, title="第一类卖点", message="检测到第一类卖点信号")
+alertcondition(sell2_condition, title="第二类卖点", message="检测到第二类卖点信号")
+alertcondition(sell3_condition, title="第三类卖点", message="检测到第三类卖点信号")
+
+// 信息面板
+var table infoTable = table.new(position.top_right, 2, 7, bgcolor=color.new(color.black, 85))
+if barstate.islast
+    table.cell(infoTable, 0, 0, "缠论买卖点", text_color=color.white, text_size=size.normal)
+    table.cell(infoTable, 0, 1, "买1: 下跌新低", text_color=color_buy1, text_size=size.small)
+    table.cell(infoTable, 0, 2, "买2: 不创新低", text_color=color_buy2, text_size=size.small)
+    table.cell(infoTable, 0, 3, "买3: 中枢/背离", text_color=color_buy3, text_size=size.small)
+    table.cell(infoTable, 0, 4, "卖1: 上涨新高", text_color=color_sell1, text_size=size.small)
+    table.cell(infoTable, 0, 5, "卖2: 不创新高", text_color=color_sell2, text_size=size.small)
+    table.cell(infoTable, 0, 6, "卖3: 中枢/背离", text_color=color_sell3, text_size=size.small)

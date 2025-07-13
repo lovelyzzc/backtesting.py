@@ -1,0 +1,420 @@
+//@version=6
+indicator("缠论买卖点指标 V6 (Chan Theory Buy/Sell Points)", overlay=true, max_boxes_count=500, max_labels_count=500)
+
+// ====== 输入参数组 ======
+group1 = "基础设置"
+fractal_period = input.int(5, "分形周期", minval=3, group=group1)
+min_zhongshu_k = input.int(3, "中枢最小K线数", minval=3, group=group1)
+trend_period = input.int(20, "趋势周期", minval=10, group=group1)
+lookback_bars = input.int(100, "回看K线数", minval=50, maxval=500, group=group1)
+
+group2 = "显示设置"
+show_fractals = input.bool(true, "显示分形", group=group2)
+show_zhongshu = input.bool(true, "显示中枢", group=group2)
+show_trend_lines = input.bool(true, "显示趋势线", group=group2)
+show_buy_points = input.bool(true, "显示买点", group=group2)
+show_sell_points = input.bool(true, "显示卖点", group=group2)
+show_bi_lines = input.bool(true, "显示笔", group=group2)
+show_info_panel = input.bool(true, "显示信息面板", group=group2)
+
+group3 = "买点颜色"
+color_buy1 = input.color(#00FF00, "第一类买点", group=group3)
+color_buy2 = input.color(#7FFF00, "第二类买点", group=group3)
+color_buy3 = input.color(#00CED1, "第三类买点", group=group3)
+
+group4 = "卖点颜色"
+color_sell1 = input.color(#FF0000, "第一类卖点", group=group4)
+color_sell2 = input.color(#FF7F00, "第二类卖点", group=group4)
+color_sell3 = input.color(#FF1493, "第三类卖点", group=group4)
+
+group5 = "高级设置"
+use_macd_divergence = input.bool(true, "使用MACD背离", group=group5)
+macd_fast = input.int(12, "MACD快线周期", minval=1, group=group5)
+macd_slow = input.int(26, "MACD慢线周期", minval=1, group=group5)
+macd_signal = input.int(9, "MACD信号线周期", minval=1, group=group5)
+zhongshu_extend_ratio = input.float(0.02, "中枢延伸系数", minval=0.01, maxval=0.1, step=0.01, group=group5)
+
+// ====== 类型定义 ======
+type Fractal
+    int bar_index
+    float price
+    bool is_top
+    int strength
+
+type Zhongshu
+    int start_bar
+    int end_bar
+    float high
+    float low
+    float center
+    int count
+    box visual
+
+type TrendLine
+    int x1
+    float y1
+    int x2
+    float y2
+    line visual
+    bool is_up
+
+type Bi
+    int start_bar
+    float start_price
+    int end_bar
+    float end_price
+    bool is_up
+    line visual
+
+// ====== 全局变量 ======
+var array<Fractal> fractals = array.new<Fractal>()
+var array<Zhongshu> zhongshus = array.new<Zhongshu>()
+var array<TrendLine> trend_lines = array.new<TrendLine>()
+var array<Fractal> processed_fractals = array.new<Fractal>()
+var array<Bi> bis = array.new<Bi>()
+var float last_buy1_price = na
+var float last_sell1_price = na
+var int last_buy1_bar = na
+var int last_sell1_bar = na
+
+// ====== 分形识别函数 ======
+identify_fractal(period) =>
+    half = math.floor(period / 2)
+    is_top = true
+    is_bottom = true
+    
+    for i = 1 to half
+        if high[half] <= high[half - i] or high[half] <= high[half + i]
+            is_top := false
+        if low[half] >= low[half - i] or low[half] >= low[half + i]
+            is_bottom := false
+    
+    [is_top, is_bottom]
+
+// ====== 中枢识别函数 ======
+identify_zhongshu() =>
+    if array.size(fractals) >= 4
+        // 获取最近的分形
+        recent_fractals = array.slice(fractals, math.max(0, array.size(fractals) - 10), array.size(fractals))
+        
+        for i = 0 to array.size(recent_fractals) - 4
+            f1 = array.get(recent_fractals, i)
+            f2 = array.get(recent_fractals, i + 1)
+            f3 = array.get(recent_fractals, i + 2)
+            f4 = array.get(recent_fractals, i + 3)
+            
+            // 检查是否形成中枢
+            if f1.is_top and not f2.is_top and f3.is_top and not f4.is_top
+                high1 = math.min(f1.price, f3.price)
+                low1 = math.max(f2.price, f4.price)
+                
+                if high1 > low1  // 有重叠区域
+                    new_zhongshu = Zhongshu.new()
+                    new_zhongshu.start_bar := f1.bar_index
+                    new_zhongshu.end_bar := f4.bar_index
+                    new_zhongshu.high := high1
+                    new_zhongshu.low := low1
+                    new_zhongshu.center := (high1 + low1) / 2
+                    new_zhongshu.count := 4
+                    
+                    // 检查是否与现有中枢重叠
+                    overlap = false
+                    if array.size(zhongshus) > 0
+                        for i = 0 to array.size(zhongshus) - 1
+                            existing = array.get(zhongshus, i)
+                            if math.abs(existing.center - new_zhongshu.center) < (existing.high - existing.low) * 0.5
+                                overlap := true
+                                break
+                    
+                    if not overlap
+                        array.push(zhongshus, new_zhongshu)
+                        // 限制中枢数量
+                        if array.size(zhongshus) > 20
+                            old_zhongshu = array.shift(zhongshus)
+                            box.delete(old_zhongshu.visual)
+
+// ====== 笔识别与绘制函数 ======
+process_fractals_and_identify_bis() =>
+    // 1. 处理分形，确保顶底交替
+    if array.size(fractals) > 0
+        new_fractal = array.last(fractals)
+        
+        if array.size(processed_fractals) == 0
+            array.push(processed_fractals, new_fractal)
+        else
+            last_processed = array.last(processed_fractals)
+            if new_fractal.is_top != last_processed.is_top
+                // 检查K线数量是否满足成笔条件（非包含关系）
+                // 简单起见，我们假设分形周期已保证了足够的间隔
+                array.push(processed_fractals, new_fractal)
+            else
+                // 类型相同，根据价格更新
+                if new_fractal.is_top and new_fractal.price > last_processed.price
+                    array.pop(processed_fractals)
+                    array.push(processed_fractals, new_fractal)
+                else if not new_fractal.is_top and new_fractal.price < last_processed.price
+                    array.pop(processed_fractals)
+                    array.push(processed_fractals, new_fractal)
+
+    // 2. 根据处理后的分形识别并绘制“笔”
+    while array.size(bis) < array.size(processed_fractals) - 1
+        start_f = array.get(processed_fractals, array.size(bis))
+        end_f = array.get(processed_fractals, array.size(bis) + 1)
+        
+        new_bi = Bi.new()
+        new_bi.start_bar := start_f.bar_index
+        new_bi.start_price := start_f.price
+        new_bi.end_bar := end_f.bar_index
+        new_bi.end_price := end_f.price
+        new_bi.is_up := end_f.is_top
+        
+        array.push(bis, new_bi)
+        
+        // 在此立即绘制新形成的笔
+        if show_bi_lines
+            bi_color = new_bi.is_up ? color.blue : color.yellow
+            line.new(new_bi.start_bar, new_bi.start_price, new_bi.end_bar, new_bi.end_price, color=bi_color, width=2)
+
+
+// ====== 趋势线绘制函数 ======
+draw_trend_lines() =>
+    if array.size(fractals) >= 2
+        // 清理旧的趋势线
+        if array.size(trend_lines) > 0
+            for i = 0 to array.size(trend_lines) - 1
+                tl = array.get(trend_lines, i)
+                line.delete(tl.visual)
+        array.clear(trend_lines)
+        
+        // 获取顶分形和底分形
+        tops = array.new<Fractal>()
+        bottoms = array.new<Fractal>()
+        
+        if array.size(fractals) > 0
+            for i = 0 to array.size(fractals) - 1
+                f = array.get(fractals, i)
+                if f.is_top
+                    array.push(tops, f)
+                else
+                    array.push(bottoms, f)
+        
+        // 绘制上升趋势线
+        if array.size(bottoms) >= 2
+            for i = array.size(bottoms) - 2 to math.max(0, array.size(bottoms) - 4)
+                b1 = array.get(bottoms, i)
+                b2 = array.get(bottoms, array.size(bottoms) - 1)
+                
+                if b2.price > b1.price and b2.bar_index - b1.bar_index > 5
+                    tl = TrendLine.new()
+                    tl.x1 := b1.bar_index
+                    tl.y1 := b1.price
+                    tl.x2 := b2.bar_index
+                    tl.y2 := b2.price
+                    tl.is_up := true
+                    tl.visual := line.new(tl.x1, tl.y1, tl.x2, tl.y2, color=color.new(color.green, 50), width=1, style=line.style_dashed)
+                    array.push(trend_lines, tl)
+                    break
+        
+        // 绘制下降趋势线
+        if array.size(tops) >= 2
+            for i = array.size(tops) - 2 to math.max(0, array.size(tops) - 4)
+                t1 = array.get(tops, i)
+                t2 = array.get(tops, array.size(tops) - 1)
+                
+                if t2.price < t1.price and t2.bar_index - t1.bar_index > 5
+                    tl = TrendLine.new()
+                    tl.x1 := t1.bar_index
+                    tl.y1 := t1.price
+                    tl.x2 := t2.bar_index
+                    tl.y2 := t2.price
+                    tl.is_up := false
+                    tl.visual := line.new(tl.x1, tl.y1, tl.x2, tl.y2, color=color.new(color.red, 50), width=1, style=line.style_dashed)
+                    array.push(trend_lines, tl)
+                    break
+
+// ====== 主逻辑 ======
+[is_top, is_bottom] = identify_fractal(fractal_period)
+half_period = math.floor(fractal_period / 2)
+
+// 添加分形到数组
+if is_top and bar_index >= half_period
+    f = Fractal.new()
+    f.bar_index := bar_index - half_period
+    f.price := high[half_period]
+    f.is_top := true
+    f.strength := fractal_period
+    array.push(fractals, f)
+    
+    if array.size(fractals) > lookback_bars
+        array.shift(fractals)
+
+if is_bottom and bar_index >= half_period
+    f = Fractal.new()
+    f.bar_index := bar_index - half_period
+    f.price := low[half_period]
+    f.is_top := false
+    f.strength := fractal_period
+    array.push(fractals, f)
+    
+    if array.size(fractals) > lookback_bars
+        array.shift(fractals)
+
+// 识别中枢
+identify_zhongshu()
+
+// 识别笔
+if barstate.isconfirmed
+    process_fractals_and_identify_bis()
+
+// 绘制趋势线
+if show_trend_lines and barstate.isconfirmed
+    draw_trend_lines()
+
+// ====== 趋势判断 ======
+ema_fast = ta.ema(close, trend_period)
+ema_slow = ta.ema(close, trend_period * 2)
+ema_slower = ta.ema(close, trend_period * 3)
+trend_up = ema_fast > ema_slow and ema_slow > ema_slower
+trend_down = ema_fast < ema_slow and ema_slow < ema_slower
+trend_strength = math.abs(ema_fast - ema_slow) / ema_slow * 100
+
+// ====== MACD背离检测 ======
+[macdLine, signalLine, histLine] = ta.macd(close, macd_fast, macd_slow, macd_signal)
+macd_bull_div = false
+macd_bear_div = false
+
+if use_macd_divergence and is_bottom
+    // 检查底背离
+    for i = 1 to 5
+        prev_bottom = array.size(fractals) > i ? array.get(fractals, array.size(fractals) - i - 1) : na
+        if not na(prev_bottom) and not prev_bottom.is_top
+            if low[half_period] < prev_bottom.price and macdLine[half_period] > macdLine[bar_index - prev_bottom.bar_index]
+                macd_bull_div := true
+                break
+
+if use_macd_divergence and is_top
+    // 检查顶背离
+    for i = 1 to 5
+        prev_top = array.size(fractals) > i ? array.get(fractals, array.size(fractals) - i - 1) : na
+        if not na(prev_top) and prev_top.is_top
+            if high[half_period] > prev_top.price and macdLine[half_period] < macdLine[bar_index - prev_top.bar_index]
+                macd_bear_div := true
+                break
+
+// ====== 买卖点判断 ======
+// 第一类买点
+buy1 = trend_down and is_bottom and low[half_period] < ta.lowest(low[half_period + 1], 20) and trend_strength > 0.5
+
+// 第二类买点
+buy2 = false
+if not na(last_buy1_price) and is_bottom
+    buy2 := low[half_period] > last_buy1_price and bar_index - last_buy1_bar < 50 and close > last_buy1_price
+
+// 第三类买点
+buy3 = false
+if array.size(zhongshus) > 0
+    for i = 0 to array.size(zhongshus) - 1
+        zs = array.get(zhongshus, i)
+        if is_bottom and low[half_period] <= zs.low * (1 + zhongshu_extend_ratio) and low[half_period] >= zs.low * (1 - zhongshu_extend_ratio) and close > zs.low
+            buy3 := true
+            break
+buy3 := buy3 or (macd_bull_div and trend_down)
+
+// 第一类卖点
+sell1 = trend_up and is_top and high[half_period] > ta.highest(high[half_period + 1], 20) and trend_strength > 0.5
+
+// 第二类卖点
+sell2 = false
+if not na(last_sell1_price) and is_top
+    sell2 := high[half_period] < last_sell1_price and bar_index - last_sell1_bar < 50 and close < last_sell1_price
+
+// 第三类卖点
+sell3 = false
+if array.size(zhongshus) > 0
+    for i = 0 to array.size(zhongshus) - 1
+        zs = array.get(zhongshus, i)
+        if is_top and high[half_period] >= zs.high * (1 - zhongshu_extend_ratio) and high[half_period] <= zs.high * (1 + zhongshu_extend_ratio) and close < zs.high
+            sell3 := true
+            break
+sell3 := sell3 or (macd_bear_div and trend_up)
+
+// 更新买卖点记录
+if buy1
+    last_buy1_price := low[half_period]
+    last_buy1_bar := bar_index
+if sell1
+    last_sell1_price := high[half_period]
+    last_sell1_bar := bar_index
+
+// ====== 绘制分形 ======
+plotshape(show_fractals and is_top, style=shape.triangledown, location=location.abovebar, 
+          color=color.new(color.red, 30), size=size.tiny, offset=-half_period)
+plotshape(show_fractals and is_bottom, style=shape.triangleup, location=location.belowbar, 
+          color=color.new(color.green, 30), size=size.tiny, offset=-half_period)
+
+// ====== 绘制中枢 ======
+if show_zhongshu and barstate.islast and array.size(zhongshus) > 0
+    for i = 0 to array.size(zhongshus) - 1
+        zs = array.get(zhongshus, i)
+        if na(zs.visual)
+            zs.visual := box.new(zs.start_bar, zs.high, zs.end_bar, zs.low, border_color=color.blue, bgcolor=color.new(color.blue, 90), text=str.tostring(zs.count) + "K", text_color=color.blue, text_size=size.tiny, text_halign=text.align_center)
+        else
+            box.set_right(zs.visual, math.min(bar_index, zs.end_bar + 20))
+
+// ====== 绘制买卖点 ======
+if show_buy_points
+    label.new(buy1 ? bar_index - half_period : na, low[half_period], "买1", style=label.style_label_up, color=color_buy1, textcolor=color.white, size=size.small)
+    label.new(buy2 ? bar_index - half_period : na, low[half_period], "买2", style=label.style_label_up, color=color_buy2, textcolor=color.white, size=size.small)
+    label.new(buy3 ? bar_index - half_period : na, low[half_period], "买3", style=label.style_label_up, color=color_buy3, textcolor=color.white, size=size.small)
+
+if show_sell_points
+    label.new(sell1 ? bar_index - half_period : na, high[half_period], "卖1", style=label.style_label_down, color=color_sell1, textcolor=color.white, size=size.small)
+    label.new(sell2 ? bar_index - half_period : na, high[half_period], "卖2", style=label.style_label_down, color=color_sell2, textcolor=color.white, size=size.small)
+    label.new(sell3 ? bar_index - half_period : na, high[half_period], "卖3", style=label.style_label_down, color=color_sell3, textcolor=color.white, size=size.small)
+
+// ====== 警报 ======
+alertcondition(buy1, "第一类买点", "缠论第一类买点出现")
+alertcondition(buy2, "第二类买点", "缠论第二类买点出现")
+alertcondition(buy3, "第三类买点", "缠论第三类买点出现")
+alertcondition(sell1, "第一类卖点", "缠论第一类卖点出现")
+alertcondition(sell2, "第二类卖点", "缠论第二类卖点出现")
+alertcondition(sell3, "第三类卖点", "缠论第三类卖点出现")
+
+// ====== 信息面板 ======
+if show_info_panel and barstate.islast
+    var table info_table = table.new(position.top_right, 3, 8, bgcolor=color.new(color.black, 85), border_color=color.gray, border_width=1)
+    
+    // 标题
+    table.merge_cells(info_table, 0, 0, 2, 0)
+    table.cell(info_table, 0, 0, "缠论买卖点 V6", text_color=color.white, text_size=size.normal, bgcolor=color.new(color.blue, 70))
+    
+    // 买卖点说明
+    table.cell(info_table, 0, 1, "类型", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 1, "买点", text_color=color.green, text_size=size.small)
+    table.cell(info_table, 2, 1, "卖点", text_color=color.red, text_size=size.small)
+    
+    table.cell(info_table, 0, 2, "第一类", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 2, "趋势新低", text_color=color_buy1, text_size=size.tiny)
+    table.cell(info_table, 2, 2, "趋势新高", text_color=color_sell1, text_size=size.tiny)
+    
+    table.cell(info_table, 0, 3, "第二类", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 3, "不创新低", text_color=color_buy2, text_size=size.tiny)
+    table.cell(info_table, 2, 3, "不创新高", text_color=color_sell2, text_size=size.tiny)
+    
+    table.cell(info_table, 0, 4, "第三类", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 4, "中枢/背离", text_color=color_buy3, text_size=size.tiny)
+    table.cell(info_table, 2, 4, "中枢/背离", text_color=color_sell3, text_size=size.tiny)
+    
+    // 当前状态
+    table.merge_cells(info_table, 0, 5, 2, 5)
+    table.cell(info_table, 0, 5, "当前状态", text_color=color.white, text_size=size.small, bgcolor=color.new(color.gray, 70))
+    
+    trend_text = trend_up ? "上涨趋势" : trend_down ? "下跌趋势" : "震荡"
+    trend_color = trend_up ? color.green : trend_down ? color.red : color.yellow
+    table.cell(info_table, 0, 6, "趋势", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 6, trend_text, text_color=trend_color, text_size=size.small)
+    table.cell(info_table, 2, 6, str.tostring(trend_strength, "#.##") + "%", text_color=trend_color, text_size=size.small)
+    
+    table.cell(info_table, 0, 7, "中枢数", text_color=color.white, text_size=size.small)
+    table.cell(info_table, 1, 7, str.tostring(array.size(zhongshus)), text_color=color.blue, text_size=size.small)
+    table.cell(info_table, 2, 7, "分形数: " + str.tostring(array.size(fractals)), text_color=color.gray, text_size=size.tiny)
