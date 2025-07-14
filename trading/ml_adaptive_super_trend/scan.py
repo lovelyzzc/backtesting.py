@@ -5,6 +5,7 @@ import pandas as pd
 from backtesting import Backtest
 from multiprocessing import Pool, cpu_count
 from functools import partial
+from datetime import datetime
 
 # --- Setup Python Path to allow imports from parent directory ---
 script_path = os.path.abspath(__file__)
@@ -16,7 +17,7 @@ from trading.ml_adaptive_super_trend.strategies import MlAdaptiveSuperTrendStrat
 
 def analyze_stock(filename, data_dir, strategy_class, start_date, end_date):
     """
-    Analyzes a single stock file to find a buy signal on the last day.
+    Analyzes a single stock file to find a signal (buy or sell) on the last day.
     This is a worker function designed for parallel processing.
     """
     filepath = os.path.join(data_dir, filename)
@@ -44,12 +45,18 @@ def analyze_stock(filename, data_dir, strategy_class, start_date, end_date):
         bt = Backtest(df_filtered, strategy_class)
         stats = bt.run()
 
-        # Check for a buy signal on the very last day
+        # Check for a signal on the very last day
         strategy_instance = stats._strategy
         if len(strategy_instance.direction) > 1:
+            # Bullish reversal signal
             if strategy_instance.direction[-2] == -1 and strategy_instance.direction[-1] == 1:
                 print(f"✅ Buy signal detected for {stock_symbol}")
-                return stock_symbol
+                return (stock_symbol, 'buy')
+            # Bearish reversal signal
+            elif strategy_instance.direction[-2] == 1 and strategy_instance.direction[-1] == -1:
+                print(f"❌ Sell signal detected for {stock_symbol}")
+                return (stock_symbol, 'sell')
+
     except Exception:
         # Silently ignore errors for individual stocks to not break the whole scan.
         # A more robust solution could log these errors to a separate file.
@@ -57,10 +64,10 @@ def analyze_stock(filename, data_dir, strategy_class, start_date, end_date):
     
     return None
 
-def find_buy_signals(data_dir, strategy_class, start_date='2020-01-01', end_date='2025-07-08'):
+def find_signals(data_dir, strategy_class, start_date='2020-01-01', end_date='2025-07-08'):
     """
     Scans through all CSV files in a directory in parallel to find stocks 
-    with a buy signal on the last day.
+    with a buy or sell signal on the last day.
     """
     files = [f for f in os.listdir(data_dir) if f.endswith('.csv')]
     n_cores = cpu_count()
@@ -80,10 +87,42 @@ def find_buy_signals(data_dir, strategy_class, start_date='2020-01-01', end_date
         # The processing is distributed among the worker processes.
         results = p.map(process_func, files)
     
-    # Filter out None values from the results to get the final list of stocks.
-    buy_signal_stocks = [stock for stock in results if stock]
+    # Filter out None values and separate signals
+    valid_results = [res for res in results if res is not None]
+    buy_signal_stocks = [stock for stock, sig_type in valid_results if sig_type == 'buy']
+    sell_signal_stocks = [stock for stock, sig_type in valid_results if sig_type == 'sell']
     
-    return buy_signal_stocks
+    return buy_signal_stocks, sell_signal_stocks
+
+def save_signals_to_ini(filepath, stock_list, block_name):
+    """Saves a list of stock codes to an INI file for TongHuaShun."""
+    if stock_list:
+        print(f"\n--- {block_name} Signals Found ---")
+        
+        formatted_stocks = []
+        for stock_symbol in stock_list:
+            try:
+                code = stock_symbol.split('.')[0]
+                formatted_stocks.append(code)
+                print(f"- {stock_symbol} -> {code}")
+            except IndexError:
+                print(f"  - Warning: Skipping malformed stock symbol {stock_symbol}")
+                continue
+        
+        with open(filepath, 'w', encoding='gbk') as f:
+            f.write("[自选股设置]\n")
+            f.write(f"股票代码={','.join(formatted_stocks)}\n")
+            f.write(f"板块名称={block_name}\n")
+
+        print(f"\nTongHuaShun import file saved to: {filepath}")
+    else:
+        print(f"\n--- No {block_name} Signals Found ---")
+        # Create an empty INI file if no stocks are found
+        with open(filepath, 'w', encoding='gbk') as f:
+            f.write("[自选股设置]\n")
+            f.write("股票代码=\n")
+            f.write(f"板块名称={block_name}\n")
+        print(f"\nAn empty result file was created: {filepath}")
 
 if __name__ == "__main__":
     # 1. 定义要使用的策略
@@ -94,48 +133,23 @@ if __name__ == "__main__":
     data_dir = os.path.join(script_dir, '..', 'tushare_data', 'daily')
 
     # 3. 运行扫描
-    print("Starting stock scan for buy signals...")
-    flagged_stocks = find_buy_signals(
+    print("Starting stock scan for buy and sell signals...")
+    today = datetime.now().strftime('%Y-%m-%d')
+    buy_stocks, sell_stocks = find_signals(
         data_dir=data_dir,
         strategy_class=STRATEGY_TO_SCAN,
         start_date='2024-01-01',
-        end_date='2025-07-10' # Use a recent date for live scanning
+        end_date=today # Use a recent date for live scanning
     )
 
-    # 4. 打印并保存为同花顺INI格式
+    # 4. 打印并保存结果
     results_dir = os.path.join(script_dir, '..', 'results')
     os.makedirs(results_dir, exist_ok=True)
-    output_filepath = os.path.join(results_dir, 'buy_signals.ini')
+    
+    # 保存买入信号
+    buy_output_filepath = os.path.join(results_dir, 'buy_signals.ini')
+    save_signals_to_ini(buy_output_filepath, buy_stocks, "AI买入扫描")
 
-    if flagged_stocks:
-        print("\n--- Scan Complete ---")
-        print("Stocks with a buy signal found:")
-        
-        # --- 格式化为同花顺代码 (仅保留代码部分) ---
-        formatted_stocks = []
-        for stock_symbol in flagged_stocks:
-            try:
-                # 只保留点号（.）之前的部分作为股票代码
-                code = stock_symbol.split('.')[0]
-                formatted_stocks.append(code)
-                print(f"- {stock_symbol} -> {code}")
-            except IndexError:
-                print(f"  - Warning: Skipping malformed stock symbol {stock_symbol}")
-                continue
-        
-        # --- 写入新的INI文件 ---
-        with open(output_filepath, 'w', encoding='gbk') as f:
-            f.write("[自选股设置]\n")
-            f.write(f"股票代码={','.join(formatted_stocks)}\n")
-            f.write("板块名称=AI扫描结果\n")
-
-        print(f"\nTongHuaShun import file saved to: {output_filepath}")
-    else:
-        print("\n--- Scan Complete ---")
-        print("No stocks with a buy signal were found based on the criteria.")
-        # 如果没有符合条件的股票，创建一个内容为空的INI文件
-        with open(output_filepath, 'w', encoding='gbk') as f:
-            f.write("[自选股设置]\n")
-            f.write("股票代码=\n")
-            f.write("板块名称=AI扫描结果\n")
-        print(f"\nAn empty result file was created: {output_filepath}") 
+    # 保存卖出信号
+    sell_output_filepath = os.path.join(results_dir, 'sell_signals.ini')
+    save_signals_to_ini(sell_output_filepath, sell_stocks, "AI卖出扫描") 

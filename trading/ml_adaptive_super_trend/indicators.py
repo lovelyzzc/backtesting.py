@@ -56,14 +56,15 @@ def pine_supertrend(close, high, low, factor: float, atr_values):
     for i in range(len(close)):
         if i == 0:
             # Initial values - no previous data
-            direction_series.iloc[i] = 1
-            supertrend_series.iloc[i] = lower_band.iloc[i] if direction_series.iloc[i] == -1 else upper_band.iloc[i]
+            direction_series.iloc[i] = -1 # Start bearish to match Pine Script
+            supertrend_series.iloc[i] = upper_band.iloc[i]
             continue
             
         prev_lower_band = lower_band.iloc[i-1] if not pd.isna(lower_band.iloc[i-1]) else 0
         prev_upper_band = upper_band.iloc[i-1] if not pd.isna(upper_band.iloc[i-1]) else 0
         prev_close = close.iloc[i-1]
         prev_supertrend = supertrend_series.iloc[i-1]
+        prev_direction = direction_series.iloc[i-1]
         
         # Update bands according to Pine Script logic
         # lowerBand := lowerBand > prevLowerBand or close[1] < prevLowerBand ? lowerBand : prevLowerBand
@@ -81,15 +82,24 @@ def pine_supertrend(close, high, low, factor: float, atr_values):
                 upper_band.iloc[i] = prev_upper_band
 
         # Determine direction according to Pine Script logic
-        if pd.isna(atr_values.iloc[i-1]) if i > 0 else True:
-            direction_series.iloc[i] = 1
-        elif prev_supertrend == prev_upper_band:
-            direction_series.iloc[i] = -1 if close.iloc[i] > upper_band.iloc[i] else 1
-        else:
-            direction_series.iloc[i] = 1 if close.iloc[i] < lower_band.iloc[i] else -1
+        if pd.isna(atr_values.iloc[i]): # Handle cases where assigned_centroid might be NaN
+            direction_series.iloc[i] = prev_direction
+        elif prev_direction == -1:  # Previously Bearish
+            if close.iloc[i] > upper_band.iloc[i]:
+                direction_series.iloc[i] = 1
+            else:
+                direction_series.iloc[i] = -1
+        else:  # Previously Bullish
+            if close.iloc[i] < lower_band.iloc[i]:
+                direction_series.iloc[i] = -1
+            else:
+                direction_series.iloc[i] = 1
             
         # Determine supertrend value
-        supertrend_series.iloc[i] = lower_band.iloc[i] if direction_series.iloc[i] == -1 else upper_band.iloc[i]
+        if direction_series.iloc[i] == 1: # Bullish trend
+            supertrend_series.iloc[i] = lower_band.iloc[i]
+        else: # Bearish trend
+            supertrend_series.iloc[i] = upper_band.iloc[i]
             
     return supertrend_series, direction_series
 

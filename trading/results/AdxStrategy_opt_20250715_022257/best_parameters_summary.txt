@@ -1,0 +1,31 @@
+--- 最佳参数组合 (基于最高平均夏普比率) ---
+
+params                    {'di_length': 30, 'adx_threshold': 20, 'di_dif...
+Num Stocks Tested                                                      5402
+Total Trades                                                            1.0
+Sharpe Ratio                                                       0.480361
+Return [%]                                                          0.00012
+Max. Drawdown [%]                                                 -0.000075
+Exposure Time [%]                                                  0.000122
+Equity Final [$]                                              100000.119823
+Equity Peak [$]                                               100000.195339
+Commissions [$]                                                   150.47748
+Buy & Hold Return [%]                                             29.998943
+Return (Ann.) [%]                                                   0.00005
+Volatility (Ann.) [%]                                              0.000103
+CAGR [%]                                                           0.000033
+Sortino Ratio                                                      1.232863
+Calmar Ratio                                                       0.664432
+Alpha [%]                                                          0.000116
+Beta                                                                    0.0
+Avg. Drawdown [%]                                                 -0.403678
+Win Rate [%]                                                          100.0
+Best Trade [%]                                                     0.647804
+Worst Trade [%]                                                    0.647804
+Avg. Trade [%]                                                     0.647804
+Profit Factor                                                           NaN
+Expectancy [%]                                                     0.647804
+SQN                                                                     NaN
+Kelly Criterion                                                         NaN
+Max. Drawdown Duration                                                  NaN
+Avg. Drawdown Duration                                                  NaN

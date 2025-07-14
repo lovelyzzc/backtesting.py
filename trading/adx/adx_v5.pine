@@ -1,0 +1,32 @@
+//@version=5
+indicator("ADX and DI", shorttitle="ADX/DI")
+
+len = input.int(14, title="DI Length", minval=1)
+th = input.int(20, title="Threshold")
+
+// v4 a dmi calculation
+TrueRange() =>
+    math.max(math.max(high - low, math.abs(high - nz(close[1]))), math.abs(low - nz(close[1])))
+
+DirectionalMovementPlus() =>
+    v1 = high - nz(high[1])
+    v2 = nz(low[1]) - low
+    v1 > v2 ? math.max(v1, 0) : 0
+
+DirectionalMovementMinus() =>
+    v1 = high - nz(high[1])
+    v2 = nz(low[1]) - low
+    v2 > v1 ? math.max(v2, 0) : 0
+
+// Smoothed values using RMA (Wilder's Smoothing)
+diPlus = 100 * ta.rma(DirectionalMovementPlus(), len) / ta.rma(TrueRange(), len)
+diMinus = 100 * ta.rma(DirectionalMovementMinus(), len) / ta.rma(TrueRange(), len)
+
+// ADX
+dx = 100 * math.abs(diPlus - diMinus) / (diPlus + diMinus)
+adx = ta.sma(dx, len)
+
+plot(diPlus, color=color.green, title="DI+")
+plot(diMinus, color=color.red, title="DI-")
+plot(adx, color=color.navy, title="ADX")
+hline(th, "Threshold", color=color.black)
