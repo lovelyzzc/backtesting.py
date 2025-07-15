@@ -12,14 +12,21 @@ class AdxMlResonanceStrategy(Strategy):
     1. 当ADX显示强趋势且ML SuperTrend转为看涨时买入
     2. 当ADX显示强趋势且ML SuperTrend转为看跌时卖出
     3. 设置止损和止盈
+    
+    现在使用完整的K-means聚类算法来计算ML自适应SuperTrend
     """
     
     # 策略参数
-    adx_length = 14
+    adx_length = 10
     adx_threshold = 25
     ml_atr_len = 10
     ml_fact = 3.0
     training_data_period = 100
+    
+    # K-means聚类参数
+    highvol = 0.75
+    midvol = 0.5
+    lowvol = 0.25
     
     # 风控参数
     stop_loss_pct = 0.05  # 5% 止损
@@ -38,6 +45,9 @@ class AdxMlResonanceStrategy(Strategy):
             ml_atr_len=self.ml_atr_len,
             ml_fact=self.ml_fact,
             training_data_period=self.training_data_period,
+            highvol=self.highvol,
+            midvol=self.midvol,
+            lowvol=self.lowvol,
         )
 
     def next(self):
@@ -80,11 +90,13 @@ class AdvancedAdxMlResonanceStrategy(Strategy):
     """
     进阶版ADX和ML SuperTrend共振策略
     
-    使用完整的共振指标，同时考虑DI交叉和ML SuperTrend方向变化
+    在AdxMlResonanceStrategy基础上，额外增加DI条件：
+    - 买入信号需要：ADX强势 + ML转涨 + (DI+ - DI-) > di_threshold
+    - 卖出信号需要：ADX强势 + ML转跌 + (DI- - DI+) > di_threshold
     """
     
     # 策略参数
-    adx_length = 14
+    adx_length = 10
     adx_threshold = 25
     ml_atr_len = 10
     ml_fact = 3.0
@@ -93,13 +105,17 @@ class AdvancedAdxMlResonanceStrategy(Strategy):
     midvol = 0.5
     lowvol = 0.25
     
+    # DI差值阈值参数
+    di_threshold = 5  # DI+和DI-的差值阈值
+    
     # 风控参数
     stop_loss_pct = 0.04  # 4% 止损
     take_profit_pct = 0.12  # 12% 止盈
-    max_holding_days = 15
+    max_holding_days = 3
 
     def init(self):
         """初始化策略指标"""
+        # 使用增强版共振指标（包含DI差值条件）
         (self.adx, self.di_plus, self.di_minus, 
          self.ml_st, self.ml_direction, self.resonance_signal) = self.I(
             adx_ml_resonance_indicator,
@@ -114,6 +130,7 @@ class AdvancedAdxMlResonanceStrategy(Strategy):
             highvol=self.highvol,
             midvol=self.midvol,
             lowvol=self.lowvol,
+            di_threshold=self.di_threshold,  # 启用DI差值条件
         )
 
     def next(self):
@@ -162,6 +179,7 @@ class ConservativeResonanceStrategy(Strategy):
     保守版共振策略
     
     只做多，信号要求更严格
+    现在使用完整的K-means聚类算法来计算ML自适应SuperTrend
     """
     
     # 策略参数
@@ -170,6 +188,11 @@ class ConservativeResonanceStrategy(Strategy):
     ml_atr_len = 14
     ml_fact = 2.5  # 更敏感的SuperTrend
     training_data_period = 150  # 更长的训练周期
+    
+    # K-means聚类参数（使用更保守的设置）
+    highvol = 0.8   # 更高的高波动率阈值
+    midvol = 0.5
+    lowvol = 0.2    # 更低的低波动率阈值
     
     # 风控参数
     stop_loss_pct = 0.03  # 3% 止损
@@ -188,6 +211,9 @@ class ConservativeResonanceStrategy(Strategy):
             ml_atr_len=self.ml_atr_len,
             ml_fact=self.ml_fact,
             training_data_period=self.training_data_period,
+            highvol=self.highvol,
+            midvol=self.midvol,
+            lowvol=self.lowvol,
         )
 
     def next(self):

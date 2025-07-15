@@ -11,3 +11,4 @@ backoff
 numba
 matplotlib
 seaborn
+tushare

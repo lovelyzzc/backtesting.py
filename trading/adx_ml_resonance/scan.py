@@ -45,8 +45,8 @@ def analyze_stock(filename, data_dir, strategy_class, start_date, end_date):
         if len(df_filtered) < 200:  # 共振策略需要更多数据
             return None
 
-        # 运行回测，我们不需要现金或佣金来检测信号
-        bt = Backtest(df_filtered, strategy_class)
+        # 运行回测，设置足够的初始资金以避免价格超出警告
+        bt = Backtest(df_filtered, strategy_class, cash=1000000, commission=0.0)
         stats = bt.run()
 
         # 检查最后一天的信号
@@ -60,7 +60,7 @@ def analyze_stock(filename, data_dir, strategy_class, start_date, end_date):
                     print(f"✅ ADX-ML共振买入信号: {stock_symbol}")
                     return (stock_symbol, 'buy')
                 elif strategy_instance.sell_signal[-1]:
-                    print(f"❌ ADX-ML共振卖出信号: {stock_symbol}")
+                    # print(f"❌ ADX-ML共振卖出信号: {stock_symbol}")
                     return (stock_symbol, 'sell')
                     
         elif hasattr(strategy_instance, 'resonance_signal'):
@@ -70,7 +70,7 @@ def analyze_stock(filename, data_dir, strategy_class, start_date, end_date):
                     print(f"✅ 高级共振买入信号: {stock_symbol}")
                     return (stock_symbol, 'buy')
                 elif strategy_instance.resonance_signal[-1] == -1:
-                    print(f"❌ 高级共振卖出信号: {stock_symbol}")
+                    # print(f"❌ 高级共振卖出信号: {stock_symbol}")
                     return (stock_symbol, 'sell')
 
     except Exception as e:
