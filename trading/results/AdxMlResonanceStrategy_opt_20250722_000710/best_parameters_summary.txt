@@ -1,0 +1,31 @@
+--- 最佳参数组合 (基于最高平均夏普比率) ---
+
+params                    {'adx_length': 10, 'adx_threshold': 25, 'ml_at...
+Num Stocks Tested                                                      5343
+Total Trades                                                        20642.0
+Sharpe Ratio                                                       0.108371
+Return [%]                                                           3.5144
+Max. Drawdown [%]                                                 -6.616263
+Exposure Time [%]                                                  2.636625
+Equity Final [$]                                              103514.399658
+Equity Peak [$]                                               107762.680153
+Buy & Hold Return [%]                                              7.472176
+Return (Ann.) [%]                                                  1.774618
+Volatility (Ann.) [%]                                              7.288963
+CAGR [%]                                                           1.140251
+Alpha [%]                                                          3.413238
+Beta                                                               0.016718
+Commissions [$]                                                  592.815655
+Sortino Ratio                                                           inf
+Calmar Ratio                                                       1.808762
+Avg. Drawdown [%]                                                 -5.543113
+Win Rate [%]                                                      50.280035
+Best Trade [%]                                                       6.2921
+Worst Trade [%]                                                   -3.439894
+Avg. Trade [%]                                                     0.900896
+Profit Factor                                                       5.55659
+Expectancy [%]                                                     1.000865
+SQN                                                               -0.359989
+Kelly Criterion                                                    -1.44886
+Max. Drawdown Duration                                             0.023429
+Avg. Drawdown Duration                                             0.023429

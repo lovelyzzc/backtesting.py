@@ -11,7 +11,7 @@ def adx_ml_resonance_indicator(high: pd.Series, low: pd.Series, close: pd.Series
                                highvol: float = 0.75, midvol: float = 0.5, lowvol: float = 0.25,
                                di_threshold: float = 0):
     """
-    计算ADX和ML自适应SuperTrend的共振信号
+    计算ADX和ML自适应SuperTrend的高级共振信号
     
     参数:
     - high, low, close: 价格序列
@@ -101,78 +101,4 @@ def adx_ml_resonance_indicator(high: pd.Series, low: pd.Series, close: pd.Series
             else:
                 resonance_signal[i] = 0
     
-    return adx, di_plus, di_minus, ml_st, ml_direction, resonance_signal
-
-
-def simple_resonance_indicator(high: pd.Series, low: pd.Series, close: pd.Series,
-                               adx_length: int = 10, adx_threshold: float = 20,
-                               ml_atr_len: int = 10, ml_fact: float = 3.0,
-                               training_data_period: int = 100,
-                               highvol: float = 0.75, midvol: float = 0.5, lowvol: float = 0.25):
-    """
-    简化版共振指标，只需要ADX强势和ML SuperTrend方向一致
-    现在使用完整的K-means聚类算法来计算ML自适应SuperTrend
-    
-    参数:
-    - high, low, close: 价格序列
-    - adx_length: ADX计算周期
-    - adx_threshold: ADX阈值，用于判断趋势强度
-    - ml_atr_len: ML SuperTrend的ATR周期
-    - ml_fact: ML SuperTrend的倍数因子
-    - training_data_period: ML算法的训练数据周期
-    - highvol, midvol, lowvol: 波动率聚类的分界点
-    
-    返回:
-    - buy_signal: 买入信号 (布尔数组)
-    - sell_signal: 卖出信号 (布尔数组)
-    - adx: ADX值
-    - ml_direction: ML SuperTrend方向
-    """
-    
-    # 转换为pandas Series
-    if not isinstance(high, pd.Series):
-        high = pd.Series(high)
-    if not isinstance(low, pd.Series):
-        low = pd.Series(low)
-    if not isinstance(close, pd.Series):
-        close = pd.Series(close)
-    
-    # 计算ADX指标
-    adx, di_plus, di_minus = adx_indicator(high, low, close, adx_length)
-    
-    # 计算ML自适应SuperTrend（使用完整的K-means聚类算法）
-    ml_st, ml_direction = ml_adaptive_super_trend(
-        high, low, close, 
-        atr_len=ml_atr_len, 
-        fact=ml_fact,
-        training_data_period=training_data_period,
-        highvol=highvol, 
-        midvol=midvol, 
-        lowvol=lowvol
-    )
-    
-    # 转换为numpy数组
-    adx = np.array(adx)
-    ml_direction = np.array(ml_direction)
-    
-    # 计算信号
-    buy_signal = np.zeros(len(close), dtype=bool)
-    sell_signal = np.zeros(len(close), dtype=bool)
-    
-    for i in range(1, len(close)):
-        # ADX强势条件
-        is_adx_strong = adx[i] > adx_threshold
-        
-        # ML SuperTrend方向变化
-        ml_bullish_reversal = ml_direction[i] == 1 and ml_direction[i-1] == -1
-        ml_bearish_reversal = ml_direction[i] == -1 and ml_direction[i-1] == 1
-        
-        # 共振买入信号：ADX强势 + ML转为看涨
-        if is_adx_strong and ml_bullish_reversal:
-            buy_signal[i] = True
-        
-        # 共振卖出信号：ADX强势 + ML转为看跌
-        elif is_adx_strong and ml_bearish_reversal:
-            sell_signal[i] = True
-    
-    return buy_signal, sell_signal, adx, ml_direction 
+    return adx, di_plus, di_minus, ml_st, ml_direction, resonance_signal 

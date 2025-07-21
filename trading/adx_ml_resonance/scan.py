@@ -13,13 +13,9 @@ project_root = os.path.dirname(os.path.dirname(os.path.dirname(script_path)))
 if project_root not in sys.path:
     sys.path.insert(0, project_root)
 
-from trading.adx_ml_resonance.strategies import (
-    AdxMlResonanceStrategy, 
-    AdvancedAdxMlResonanceStrategy, 
-    ConservativeResonanceStrategy
-)
+from trading.adx_ml_resonance.strategies import AdxMlResonanceStrategy
 
-def analyze_stock(filename, data_dir, strategy_class, start_date, end_date):
+def analyze_stock(filename, data_dir, start_date, end_date):
     """
     分析单个股票文件，检测最后一天的买入或卖出信号
     这是为并行处理设计的工作函数
@@ -46,31 +42,20 @@ def analyze_stock(filename, data_dir, strategy_class, start_date, end_date):
             return None
 
         # 运行回测，设置足够的初始资金以避免价格超出警告
-        bt = Backtest(df_filtered, strategy_class, cash=1000000, commission=0.0)
+        bt = Backtest(df_filtered, AdxMlResonanceStrategy, cash=1000000, commission=0.0)
         stats = bt.run()
 
         # 检查最后一天的信号
         strategy_instance = stats._strategy
         
-        # 检查不同策略的信号逻辑
-        if hasattr(strategy_instance, 'buy_signal') and hasattr(strategy_instance, 'sell_signal'):
-            # 简单共振策略
-            if len(strategy_instance.buy_signal) > 0:
-                if strategy_instance.buy_signal[-1]:
-                    print(f"✅ ADX-ML共振买入信号: {stock_symbol}")
-                    return (stock_symbol, 'buy')
-                elif strategy_instance.sell_signal[-1]:
-                    # print(f"❌ ADX-ML共振卖出信号: {stock_symbol}")
-                    return (stock_symbol, 'sell')
-                    
-        elif hasattr(strategy_instance, 'resonance_signal'):
-            # 高级共振策略
+        # 检查高级共振信号
+        if hasattr(strategy_instance, 'resonance_signal'):
             if len(strategy_instance.resonance_signal) > 0:
                 if strategy_instance.resonance_signal[-1] == 1:
-                    print(f"✅ 高级共振买入信号: {stock_symbol}")
+                    print(f"✅ 高级共振+成交量买入信号: {stock_symbol}")
                     return (stock_symbol, 'buy')
                 elif strategy_instance.resonance_signal[-1] == -1:
-                    # print(f"❌ 高级共振卖出信号: {stock_symbol}")
+                    # print(f"❌ 高级共振+成交量卖出信号: {stock_symbol}")
                     return (stock_symbol, 'sell')
 
     except Exception as e:
@@ -81,7 +66,7 @@ def analyze_stock(filename, data_dir, strategy_class, start_date, end_date):
     
     return None
 
-def find_resonance_signals(data_dir, strategy_class, start_date='2020-01-01', end_date='2025-07-08'):
+def find_resonance_signals(data_dir, start_date='2020-01-01', end_date='2025-07-08'):
     """
     并行扫描目录中的所有CSV文件，寻找最后一天有买入或卖出信号的股票
     """
@@ -93,7 +78,6 @@ def find_resonance_signals(data_dir, strategy_class, start_date='2020-01-01', en
     # 这是在pool.map中向工作函数传递额外参数的简洁方式
     process_func = partial(analyze_stock, 
                            data_dir=data_dir, 
-                           strategy_class=strategy_class, 
                            start_date=start_date, 
                            end_date=end_date)
 
@@ -140,105 +124,31 @@ def save_signals_to_ini(filepath, stock_list, block_name):
             f.write(f"板块名称={block_name}\n")
         print(f"\n已创建空结果文件: {filepath}")
 
-def run_multi_strategy_scan(data_dir, start_date, end_date, results_dir):
-    """
-    运行多种共振策略的扫描
-    """
-    strategies = [
-        (AdxMlResonanceStrategy, "基础共振"),
-        (AdvancedAdxMlResonanceStrategy, "高级共振"),
-        (ConservativeResonanceStrategy, "保守共振")
-    ]
-    
-    all_buy_signals = []
-    all_sell_signals = []
-    
-    for strategy_class, strategy_name in strategies:
-        print(f"\n{'='*60}")
-        print(f"正在运行 {strategy_name} 策略扫描...")
-        print(f"{'='*60}")
-        
-        buy_stocks, sell_stocks = find_resonance_signals(
-            data_dir=data_dir,
-            strategy_class=strategy_class,
-            start_date=start_date,
-            end_date=end_date
-        )
-        
-        # 保存单个策略结果
-        strategy_results_dir = os.path.join(results_dir, strategy_name.replace(" ", "_"))
-        os.makedirs(strategy_results_dir, exist_ok=True)
-        
-        buy_filepath = os.path.join(strategy_results_dir, f'{strategy_name}_买入信号.ini')
-        sell_filepath = os.path.join(strategy_results_dir, f'{strategy_name}_卖出信号.ini')
-        
-        save_signals_to_ini(buy_filepath, buy_stocks, f"{strategy_name}买入")
-        save_signals_to_ini(sell_filepath, sell_stocks, f"{strategy_name}卖出")
-        
-        # 收集所有信号
-        all_buy_signals.extend(buy_stocks)
-        all_sell_signals.extend(sell_stocks)
-    
-    # 合并所有策略的结果（去重）
-    unique_buy_signals = list(set(all_buy_signals))
-    unique_sell_signals = list(set(all_sell_signals))
-    
-    return unique_buy_signals, unique_sell_signals
-
 if __name__ == "__main__":
-    # 1. 定义要使用的策略 - 可以选择其中一个或运行多个
-    SINGLE_STRATEGY = AdxMlResonanceStrategy  # 单个策略选择
-    USE_MULTI_STRATEGY = True  # 是否运行多策略扫描
-
-    # 2. 定义数据目录 (请确保路径正确)
+    # 定义数据目录 (请确保路径正确)
     script_dir = os.path.dirname(os.path.abspath(__file__))
     data_dir = os.path.join(script_dir, '..', 'tushare_data', 'daily')
 
-    # 3. 运行扫描
+    # 运行扫描
     today = datetime.now().strftime('%Y-%m-%d')
+    print("开始ADX-ML高级共振+成交量策略股票扫描...")
     
-    if USE_MULTI_STRATEGY:
-        print("开始ADX-ML共振多策略股票扫描...")
-        
-        # 创建结果目录
-        results_dir = os.path.join(script_dir, 'results')
-        os.makedirs(results_dir, exist_ok=True)
-        
-        # 运行多策略扫描
-        all_buy_stocks, all_sell_stocks = run_multi_strategy_scan(
-            data_dir=data_dir,
-            start_date='2024-01-01',
-            end_date=today,
-            results_dir=results_dir
-        )
-        
-        # 保存合并结果
-        combined_buy_filepath = os.path.join(results_dir, '合并_买入信号.ini')
-        combined_sell_filepath = os.path.join(results_dir, '合并_卖出信号.ini')
-        
-        save_signals_to_ini(combined_buy_filepath, all_buy_stocks, "合并买入信号")
-        save_signals_to_ini(combined_sell_filepath, all_sell_stocks, "合并卖出信号")
-        
-    else:
-        print("开始ADX-ML共振单策略股票扫描...")
-        
-        buy_stocks, sell_stocks = find_resonance_signals(
-            data_dir=data_dir,
-            strategy_class=SINGLE_STRATEGY,
-            start_date='2024-01-01',
-            end_date=today
-        )
+    buy_stocks, sell_stocks = find_resonance_signals(
+        data_dir=data_dir,
+        start_date='2024-01-01',
+        end_date=today
+    )
 
-        # 4. 打印并保存结果
-        results_dir = os.path.join(script_dir, 'results')
-        os.makedirs(results_dir, exist_ok=True)
-        
-        # 保存买入信号
-        buy_output_filepath = os.path.join(results_dir, 'adx_ml_买入信号.ini')
-        save_signals_to_ini(buy_output_filepath, buy_stocks, "ADX-ML买入扫描")
+    # 打印并保存结果
+    results_dir = os.path.join(script_dir, 'results')
+    os.makedirs(results_dir, exist_ok=True)
+    
+    # 保存买入信号
+    buy_output_filepath = os.path.join(results_dir, '高级共振+成交量_买入信号.ini')
+    save_signals_to_ini(buy_output_filepath, buy_stocks, "高级共振+成交量买入")
 
-        # 保存卖出信号
-        sell_output_filepath = os.path.join(results_dir, 'adx_ml_卖出信号.ini')
-        save_signals_to_ini(sell_output_filepath, sell_stocks, "ADX-ML卖出扫描")
+    # 保存卖出信号
+    sell_output_filepath = os.path.join(results_dir, '高级共振+成交量_卖出信号.ini')
+    save_signals_to_ini(sell_output_filepath, sell_stocks, "高级共振+成交量卖出")
     
     print(f"\n🎉 扫描完成！结果已保存到 results 目录") 
