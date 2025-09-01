@@ -7,7 +7,7 @@ import tushare as ts
 
 # --- 配置 ---
 # 从环境变量中获取 Tushare Token
-TUSHARE_TOKEN = "b5b62e35261bb6d4fbf2d078c034fb21918e50db9fa07dcfc377110b"
+TUSHARE_TOKEN = "070d98b2f3d6fe139e34437d636ea71a4aabe18a6f7559c14a81863f"
 if not TUSHARE_TOKEN:
     raise ValueError("请设置 TUSHARE_TOKEN 环境变量")
 
@@ -136,7 +136,7 @@ def sync_all_daily_data(start_date="20200101", end_date=None):
                 print(f"  -> 未获取到 {ts_code} 在 {sync_start_date} 之后的新数据。")
 
             # tushare pro 免费版有积分限制，每分钟不能超过一定次数的调用
-            # time.sleep(0.001)
+            time.sleep(0.001)
 
         except Exception as e:
             print(f"  -> 同步 {ts_code} 数据时出错: {e}")
