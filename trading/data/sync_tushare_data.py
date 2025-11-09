@@ -7,7 +7,7 @@ import tushare as ts
 
 # --- 配置 ---
 # 从环境变量中获取 Tushare Token
-TUSHARE_TOKEN = "070d98b2f3d6fe139e34437d636ea71a4aabe18a6f7559c14a81863f"
+TUSHARE_TOKEN = "20ac0229db965307a457e8c4573be0df7f5e36b29b8a166803ad446c"
 if not TUSHARE_TOKEN:
     raise ValueError("请设置 TUSHARE_TOKEN 环境变量")
 
