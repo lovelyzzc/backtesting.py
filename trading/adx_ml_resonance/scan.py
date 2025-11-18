@@ -42,7 +42,13 @@ def analyze_stock(filename, data_dir, start_date, end_date):
             return None
 
         # 运行回测，设置足够的初始资金以避免价格超出警告
-        bt = Backtest(df_filtered, AdxMlResonanceStrategy, cash=1000000, commission=0.0)
+        bt = Backtest(
+            df_filtered,
+            AdxMlResonanceStrategy,
+            cash=1000000,
+            commission=0.0,
+            finalize_trades=True,  # Ensure open trades are closed in stats
+        )
         stats = bt.run()
 
         # 检查最后一天的信号
