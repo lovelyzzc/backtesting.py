@@ -130,6 +130,34 @@ def save_signals_to_ini(filepath, stock_list, block_name):
             f.write(f"板块名称={block_name}\n")
         print(f"\n已创建空结果文件: {filepath}")
 
+def format_symbol_for_tradingview(symbol):
+    """将 000001.SZ 样式的股票代码转换成 TradingView 识别的格式"""
+    if '.' not in symbol:
+        return symbol
+
+    code, exchange_suffix = symbol.split('.', 1)
+    exchange_suffix = exchange_suffix.upper()
+    exchange_map = {
+        'SZ': 'SZSE',
+        'SH': 'SSE',
+        'BJ': 'BSE',
+        'HK': 'HKEX',
+    }
+    exchange = exchange_map.get(exchange_suffix, exchange_suffix)
+    return f"{exchange}:{code}"
+
+def save_tradingview_watchlist(filepath, stock_list, description):
+    """将信号列表保存为 TradingView 可批量导入的 txt 文件"""
+    if stock_list:
+        formatted = [format_symbol_for_tradingview(stock) for stock in stock_list]
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(formatted))
+        print(f"TradingView {description} 列表已保存: {filepath}")
+    else:
+        # 为空时也创建一个空文件，方便用户直接导入
+        open(filepath, 'w', encoding='utf-8').close()
+        print(f"TradingView {description} 列表为空: {filepath}")
+
 if __name__ == "__main__":
     # 定义数据目录 (请确保路径正确)
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -150,11 +178,15 @@ if __name__ == "__main__":
     os.makedirs(results_dir, exist_ok=True)
     
     # 保存买入信号
-    buy_output_filepath = os.path.join(results_dir, '高级共振+成交量_买入信号.ini')
+    buy_output_filepath = os.path.join(results_dir, f'{today}_买入信号.ini')
     save_signals_to_ini(buy_output_filepath, buy_stocks, "高级共振+成交量买入")
+    buy_tradingview_path = os.path.join(results_dir, f'{today}_tradingview.txt')
+    save_tradingview_watchlist(buy_tradingview_path, buy_stocks, "买入")
 
     # 保存卖出信号
-    sell_output_filepath = os.path.join(results_dir, '高级共振+成交量_卖出信号.ini')
+    sell_output_filepath = os.path.join(results_dir, f'{today}_卖出信号.ini')
     save_signals_to_ini(sell_output_filepath, sell_stocks, "高级共振+成交量卖出")
+    sell_tradingview_path = os.path.join(results_dir, f'{today}_tradingview.txt')
+    save_tradingview_watchlist(sell_tradingview_path, sell_stocks, "卖出")
     
     print(f"\n🎉 扫描完成！结果已保存到 results 目录") 

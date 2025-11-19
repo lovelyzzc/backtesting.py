@@ -29,3 +29,4 @@ build/*
 /venv/lib/
 /venv/lib64/
 trading/tushare_data/
+trading/adx_ml_resonance/results/
