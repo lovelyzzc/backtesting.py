@@ -180,13 +180,13 @@ if __name__ == "__main__":
     # 保存买入信号
     buy_output_filepath = os.path.join(results_dir, f'{today}_买入信号.ini')
     save_signals_to_ini(buy_output_filepath, buy_stocks, "高级共振+成交量买入")
-    buy_tradingview_path = os.path.join(results_dir, f'{today}_tradingview.txt')
+    buy_tradingview_path = os.path.join(results_dir, f'{today}_买入信号_tradingview.txt')
     save_tradingview_watchlist(buy_tradingview_path, buy_stocks, "买入")
 
     # 保存卖出信号
     sell_output_filepath = os.path.join(results_dir, f'{today}_卖出信号.ini')
     save_signals_to_ini(sell_output_filepath, sell_stocks, "高级共振+成交量卖出")
-    sell_tradingview_path = os.path.join(results_dir, f'{today}_tradingview.txt')
+    sell_tradingview_path = os.path.join(results_dir, f'{today}_卖出信号_tradingview.txt')
     save_tradingview_watchlist(sell_tradingview_path, sell_stocks, "卖出")
     
     print(f"\n🎉 扫描完成！结果已保存到 results 目录") 
